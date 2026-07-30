@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "import-questions": "node scripts/importQuestions.js",
     "generate-icons": "node scripts/generate-pwa-icons.js",
-    "generate-icons:logo": "node scripts/generate-pwa-icons.js ./src/assets/logo.png ./public",
+    "generate-icons:logo": "node scripts/generate-pwa-icons.js ./src/assets/logo.png ./public || echo '⚠️ Icon generation skipped (canvas not available)'",
     "generate-icons:custom": "node scripts/generate-pwa-icons.js",
     "prebuild": "npm run generate-icons:logo",
     "lint": "eslint src --ext js,jsx",
