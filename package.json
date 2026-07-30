@@ -1,0 +1,86 @@
+{
+  "name": "na2-quiz-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "import-questions": "node scripts/importQuestions.js",
+    "generate-icons": "node scripts/generate-pwa-icons.js",
+    "generate-icons:logo": "node scripts/generate-pwa-icons.js ./src/assets/logo.png ./public",
+    "generate-icons:custom": "node scripts/generate-pwa-icons.js",
+    "prebuild": "npm run generate-icons:logo",
+    "lint": "eslint src --ext js,jsx",
+    "lint:fix": "eslint src --ext js,jsx --fix",
+    "format": "prettier --write \"src/**/*.{js,jsx,css}\""
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@tanstack/react-query": "^5.75.7",
+    "@tanstack/react-query-devtools": "^5.91.3",
+    "axios": "^1.9.0",
+    "chart.js": "^4.4.9",
+    "dayjs": "^1.11.13",
+    "file-saver": "^2.0.5",
+    "framer-motion": "^12.12.1",
+    "html2canvas": "^1.4.1",
+    "idb": "^8.0.3",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
+    "lodash": "^4.17.21",
+    "lucide-react": "^0.510.0",
+    "passport": "^0.7.0",
+    "passport-facebook": "^3.0.0",
+    "passport-google-oauth20": "^2.0.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^18.3.1",
+    "react-dropzone": "^14.3.8",
+    "react-hot-toast": "^2.5.2",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^6.30.1",
+    "react-select": "^5.10.1",
+    "recharts": "^2.15.3",
+    "uuid": "^9.0.1",
+    "vite-plugin-pwa": "^1.2.0",
+    "workbox-window": "^7.4.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "postcss": "^8.4.38",
+    "prettier": "^3.5.3",
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.4.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version"
+    ]
+  },
+  "keywords": [
+    "quiz",
+    "education",
+    "learning",
+    "pwa",
+    "react",
+    "ai"
+  ],
+  "author": "NA2 Quiz",
+  "license": "ISC",
+  "description": "Plateforme de quiz intelligente propulsée par l'IA - Frontend PWA"
+}

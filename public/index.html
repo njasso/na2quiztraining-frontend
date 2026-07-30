@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    
+    <meta name="theme-color" content="#6366f1" />
+    <meta name="description" content="NA2 Quiz - Plateforme de quiz intelligente propulsée par l'IA DeepSeek. Apprenez plus vite, retenez plus longtemps." />
+    <meta name="keywords" content="quiz, ia, deepseek, éducation, apprentissage, cameroun, afrique" />
+    <meta name="author" content="NA2 Quiz" />
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://na2quizappschool.uk" />
+    <meta property="og:title" content="NA2 Quiz - Apprentissage Intelligent" />
+    <meta property="og:description" content="Plateforme de quiz intelligente propulsée par l'IA. Apprenez plus vite, retenez plus longtemps." />
+    <meta property="og:image" content="https://na2quizappschool.uk/icon-512.png" />
+    
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://na2quizappschool.uk" />
+    <meta name="twitter:title" content="NA2 Quiz - Apprentissage Intelligent" />
+    <meta name="twitter:description" content="Plateforme de quiz intelligente propulsée par l'IA." />
+    <meta name="twitter:image" content="https://na2quizappschool.uk/icon-512.png" />
+    
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    
+    <link rel="manifest" href="/manifest.webmanifest" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    
+    <title>NA2 Quiz - Apprentissage Intelligent</title>
+    
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #05071a 0%, #0a0f2e 60%, #05071a 100%);
+        color: #f8fafc;
+      }
+      #root { min-height: 100vh; }
+      .loader-fallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }
+      .loader-fallback::after {
+        content: '';
+        width: 48px;
+        height: 48px;
+        border: 3px solid rgba(99, 102, 241, 0.1);
+        border-top-color: #6366f1;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <div style="text-align: center; padding: 50px;">
+        <h1>JavaScript requis</h1>
+        <p>Vous devez activer JavaScript pour utiliser NA2 Quiz.</p>
+      </div>
+    </noscript>
+    
+    <div id="root">
+      <div class="loader-fallback"></div>
+    </div>
+    
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>

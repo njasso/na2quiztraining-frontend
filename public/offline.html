@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NA2 Quiz - Mode Hors Ligne</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #05071a 0%, #0a0f2e 60%, #05071a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Nunito', 'Segoe UI', sans-serif;
+      padding: 20px;
+    }
+    .offline-container {
+      max-width: 500px;
+      text-align: center;
+      padding: 48px 32px;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 32px;
+    }
+    .icon {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 24px;
+      background: rgba(99, 102, 241, 0.1);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .icon svg {
+      width: 64px;
+      height: 64px;
+      color: #6366f1;
+    }
+    h1 {
+      color: #f8fafc;
+      font-size: 2rem;
+      margin-bottom: 12px;
+    }
+    p {
+      color: #94a3b8;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+    .features {
+      text-align: left;
+      margin-bottom: 32px;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      color: #a5b4fc;
+    }
+    .feature svg {
+      width: 20px;
+      height: 20px;
+      color: #10b981;
+    }
+    .btn {
+      display: inline-block;
+      padding: 14px 32px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover {
+      opacity: 0.9;
+    }
+    .status {
+      margin-top: 24px;
+      color: #64748b;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <div class="icon">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6.5 10.5C6.5 7.5 9 5 12 5s5.5 2.5 5.5 5.5"/>
+        <path d="M4 15c-1.5 0-3-1.5-3-3 0-2 1.5-3 3-3"/>
+        <path d="M20 15c1.5 0 3-1.5 3-3 0-2-1.5-3-3-3"/>
+        <path d="M8 19h8"/>
+        <path d="M12 15v4"/>
+        <circle cx="12" cy="12" r="2"/>
+        <line x1="2" y1="2" x2="22" y2="22"/>
+      </svg>
+    </div>
+    
+    <h1>Mode Hors Ligne</h1>
+    <p>Vous n'êtes pas connecté à Internet, mais vous pouvez continuer à utiliser NA2 Quiz !</p>
+    
+    <div class="features">
+      <div class="feature">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span>Quiz téléchargés disponibles</span>
+      </div>
+      <div class="feature">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span>Résultats sauvegardés localement</span>
+      </div>
+      <div class="feature">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span>Synchronisation automatique à la reconnexion</span>
+      </div>
+    </div>
+    
+    <a href="/" class="btn">Retour à l'accueil</a>
+    
+    <div class="status">
+      <span id="status">Vérification de la connexion...</span>
+    </div>
+  </div>
+
+  <script>
+    // Vérifier périodiquement la connexion
+    function checkConnection() {
+      const statusEl = document.getElementById('status');
+      
+      if (navigator.onLine) {
+        statusEl.textContent = '✅ Connexion rétablie ! Redirection...';
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1500);
+      } else {
+        statusEl.textContent = '📴 Hors ligne - En attente de connexion...';
+      }
+    }
+    
+    checkConnection();
+    setInterval(checkConnection, 3000);
+    
+    window.addEventListener('online', () => {
+      document.getElementById('status').textContent = '✅ Connexion rétablie ! Redirection...';
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1500);
+    });
+  </script>
+</body>
+</html>
