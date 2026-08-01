@@ -1,81 +1,160 @@
-// src/components/NavHome.jsx — Navigation de secours universelle
-// Résout le problème « impossible de revenir depuis les réglages admin » :
-// un bouton Accueil + Retour est disponible sur TOUTES les pages.
-import React from 'react';
+// src/components/NavHome.jsx - Version ultra minimaliste en bas
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, ArrowLeft, LayoutDashboard, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-/**
- * Barre de navigation de secours, fixée en haut à gauche.
- * <NavHome />                        → Retour + Accueil (+ Admin si admin)
- * <NavHome variant="inline" />       → version intégrée dans un en-tête de page
- * <NavHome hideBack />               → seulement Accueil
- */
-const NavHome = ({ variant = 'floating', hideBack = false, homeTo, label }) => {
+const NavHome = ({ 
+  hideBack = false, 
+  homeTo, 
+  label,
+  className = '',
+  style = {}
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated } = useAuth() || {};
+  const [isVisible, setIsVisible] = useState(true);
 
   const isAdmin = ['admin', 'superadmin'].includes(user?.role);
   const inAdmin = location.pathname.startsWith('/admin');
-
-  // Destination « accueil » adaptée au rôle et au contexte
-  const home = homeTo
-    || (inAdmin && isAdmin ? '/admin'
-      : isAuthenticated ? '/dashboard'
-      : '/');
-
-  const homeLabel = label || (inAdmin && isAdmin ? 'Tableau admin' : isAuthenticated ? 'Tableau de bord' : 'Accueil');
-
-  const btn = {
-    display: 'inline-flex', alignItems: 'center', gap: 8,
-    padding: '9px 16px', borderRadius: 10, cursor: 'pointer',
-    fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(99,102,241,0.28)',
-    color: '#c7d2fe', backdropFilter: 'blur(8px)',
-    transition: 'all .18s ease',
-  };
-  const primary = {
-    ...btn,
-    background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-    border: 'none', color: '#fff',
-    boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
-  };
-
-  const wrap = variant === 'floating'
-    ? {
-        position: 'fixed', top: 14, left: 14, zIndex: 1200,
-        display: 'flex', gap: 8, flexWrap: 'wrap', maxWidth: 'calc(100vw - 28px)',
-      }
-    : { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' };
-
+  const home = homeTo || (inAdmin && isAdmin ? '/admin' : isAuthenticated ? '/dashboard' : '/');
+  const homeLabel = label || (inAdmin && isAdmin ? 'Admin' : isAuthenticated ? 'Dashboard' : 'Accueil');
   const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
 
+  // Cacher sur les pages de connexion
+  useEffect(() => {
+    const hidePages = ['/', '/home', '/login', '/register'];
+    if (hidePages.includes(location.pathname)) {
+      setIsVisible(false);
+    }
+  }, [location.pathname]);
+
+  if (!isVisible) return null;
+
   return (
-    <nav style={wrap} aria-label="Navigation de secours">
+    <nav 
+      className={className} 
+      style={{
+        position: 'fixed',
+        bottom: '12px',
+        left: '12px',
+        zIndex: 9999,
+        display: 'flex',
+        gap: '4px',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        padding: '4px 6px',
+        borderRadius: '10px',
+        background: 'rgba(15, 23, 42, 0.8)',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(99,102,241,0.1)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+        maxWidth: 'calc(100vw - 24px)',
+        ...style
+      }} 
+      aria-label="Navigation"
+    >
       {!hideBack && canGoBack && (
-        <button type="button" style={btn} onClick={() => navigate(-1)} title="Page précédente" aria-label="Retour">
-          <ArrowLeft size={16} /> Retour
+        <button
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '3px',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '0.65rem',
+            fontWeight: 500,
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(99,102,241,0.1)',
+            color: '#c7d2fe',
+            transition: 'all 0.2s ease',
+          }}
+          onClick={() => navigate(-1)}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+        >
+          <ArrowLeft size={12} />
         </button>
       )}
 
-      <button type="button" style={primary} onClick={() => navigate(home)} title={homeLabel} aria-label={homeLabel}>
-        {inAdmin && isAdmin ? <LayoutDashboard size={16} /> : <Home size={16} />} {homeLabel}
+      <button
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '3px 10px',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '0.65rem',
+          fontWeight: 600,
+          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          border: 'none',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(99,102,241,0.25)',
+          transition: 'all 0.2s ease',
+        }}
+        onClick={() => navigate(home)}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.02)';
+          e.currentTarget.style.boxShadow = '0 3px 12px rgba(99,102,241,0.35)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.25)';
+        }}
+      >
+        {inAdmin && isAdmin ? <LayoutDashboard size={12} /> : <Home size={12} />}
+        <span>{homeLabel}</span>
       </button>
 
-      {/* Depuis une page admin profonde, accès direct au site public */}
+      {/* Raccourcis contextuels */}
       {inAdmin && isAdmin && (
-        <button type="button" style={btn} onClick={() => navigate('/dashboard')} title="Retour au site" aria-label="Retour au site">
-          <Home size={16} /> Site
+        <button
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '3px',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '0.6rem',
+            fontWeight: 500,
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(99,102,241,0.1)',
+            color: '#c7d2fe',
+            transition: 'all 0.2s ease',
+          }}
+          onClick={() => navigate('/dashboard')}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+        >
+          <Home size={12} />
         </button>
       )}
 
-      {/* Depuis le site, raccourci vers l'administration */}
       {!inAdmin && isAdmin && (
-        <button type="button" style={btn} onClick={() => navigate('/admin')} title="Administration" aria-label="Administration">
-          <Shield size={16} /> Admin
+        <button
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '3px',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '0.6rem',
+            fontWeight: 500,
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(99,102,241,0.1)',
+            color: '#c7d2fe',
+            transition: 'all 0.2s ease',
+          }}
+          onClick={() => navigate('/admin')}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+        >
+          <Shield size={12} />
         </button>
       )}
     </nav>
