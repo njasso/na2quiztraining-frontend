@@ -31,7 +31,7 @@ const FormateurRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (user.role !== 'formateur' && user.role !== 'admin') {
+  if (user.role !== 'formateur' && user.role !== 'admin' && user.role !== 'superadmin') {
     return <Navigate to="/" replace />;
   }
 

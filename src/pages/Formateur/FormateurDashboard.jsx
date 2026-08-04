@@ -12,7 +12,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   getQuizzes,
   getResults,
-  getQuestions
+  getQuestions,
+  getMyClasses
 } from '../../services/api'; // ✅ Retiré getQuizStats car non défini
 import toast from 'react-hot-toast';
 
@@ -28,7 +29,8 @@ const FormateurDashboard = () => {
     totalAttempts: 0,
     averageScore: 0,
     totalComments: 0,
-    totalLikes: 0
+    totalLikes: 0,
+    apprenantsSuivis: 0
   });
   
   const [recentQuizzes, setRecentQuizzes] = useState([]);
@@ -36,7 +38,7 @@ const FormateurDashboard = () => {
   const [recentComments, setRecentComments] = useState([]);
 
   useEffect(() => {
-    if (user?.role !== 'formateur' && user?.role !== 'admin') {
+    if (!['formateur', 'admin', 'superadmin'].includes(user?.role)) {
       toast.error('Accès non autorisé');
       navigate('/');
       return;
@@ -74,14 +76,37 @@ const FormateurDashboard = () => {
       // Score moyen
       const totalScore = formateurResults.reduce((sum, r) => sum + (r.score || 0), 0);
       const averageScore = totalAttempts > 0 ? Math.round(totalScore / totalAttempts) : 0;
-      
+
+      // ✅ Apprenants suivis : de préférence le total distinct des membres
+      // de ses classes (voir MesClasses.jsx / document §4) — plus fiable
+      // car il compte aussi les apprenants qui n'ont encore rien passé.
+      // À défaut de classe créée, on retombe sur les élèves distincts ayant
+      // passé au moins une de ses épreuves.
+      const apprenantsSuiviesParResultats = new Set(
+        formateurResults.map((r) => r.userId || r.user?._id || r.user?.id || r.user).filter(Boolean)
+      ).size;
+
+      let apprenantsSuivis = apprenantsSuiviesParResultats;
+      try {
+        const classesData = await getMyClasses();
+        const classesArray = Array.isArray(classesData) ? classesData : classesData?.data || [];
+        if (classesArray.length > 0) {
+          const total = classesArray.reduce((sum, c) => sum + (c.membresCount ?? c.membres?.length ?? 0), 0);
+          apprenantsSuivis = total; // les classes font foi dès qu'elles existent
+        }
+      } catch (classErr) {
+        // Pas bloquant : l'estimation par résultats reste affichée
+        console.warn('Classes indisponibles, estimation par résultats utilisée:', classErr);
+      }
+
       setStats({
         totalQuizzes,
         totalQuestions,
         totalAttempts,
         averageScore,
         totalComments: 0, // À implémenter plus tard
-        totalLikes
+        totalLikes,
+        apprenantsSuivis
       });
       
       // Quiz récents
@@ -201,6 +226,12 @@ const FormateurDashboard = () => {
             color="#f59e0b"
           />
           <StatCard
+            title="Apprenants suivis"
+            value={stats.apprenantsSuivis}
+            icon={<GraduationCap size={24} />}
+            color="#14b8a6"
+          />
+          <StatCard
             title="Tentatives"
             value={stats.totalAttempts}
             icon={<Users size={24} />}
@@ -236,6 +267,20 @@ const FormateurDashboard = () => {
             description="Manuel, IA ou fichier"
             color="#10b981"
             onClick={() => navigate('/create-exam')}
+          />
+          <QuickAction
+            icon={<Plus />}
+            title="Créer une question"
+            description="Ajoutée à la banque après validation admin"
+            color="#14b8a6"
+            onClick={() => navigate('/admin/create-question')}
+          />
+          <QuickAction
+            icon={<Users />}
+            title="Mes classes"
+            description="Rattacher et suivre vos apprenants"
+            color="#f59e0b"
+            onClick={() => navigate('/formateur/classes')}
           />
           <QuickAction
             icon={<Edit2 />}

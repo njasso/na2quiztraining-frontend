@@ -3,6 +3,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import NavHome from '../components/NavHome';
+import { useAuth } from '../contexts/AuthContext';
+import { isScopeExemptRole } from '../utils/educationScope';
 import {
   FiHome,
   FiPlayCircle,
@@ -22,6 +24,11 @@ import {
 
 const QuizzesPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // 🔒 La création/publication d'épreuves est réservée aux formateurs/admins
+  // (voir rapport d'audit §5). On masque l'entrée plutôt que de laisser un
+  // élève atterrir sur une redirection.
+  const canCreateContent = isScopeExemptRole(user);
 
   const quizCategories = [
     {
@@ -34,13 +41,13 @@ const QuizzesPage = () => {
           icon: <FiPlayCircle />,
           color: '#3B82F6'
         },
-        {
+        ...(canCreateContent ? [{
           title: 'Composer une épreuve',
           description: 'Créez à partir du fichier word ou Pdf.',
           path: '/create-exam', // ✅ Changé de '/compose' à '/create-exam'
           icon: <FiEdit />,
           color: '#10B981'
-        },
+        }] : []),
         {
           title: 'Défis et Récompenses',
           description: 'Relevez des défis hebdomadaires avec récompenses.',

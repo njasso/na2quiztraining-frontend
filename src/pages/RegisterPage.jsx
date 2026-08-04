@@ -17,7 +17,10 @@ const RegisterPage = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'user', // ✅ Ajout du rôle avec valeur par défaut
+    // 🔒 SÉCURITÉ : le rôle n'est JAMAIS choisi par l'utilisateur sur un
+    // formulaire public. Il est toujours 'user' à l'inscription.
+    // Les rôles formateur/modérateur/admin ne peuvent être attribués que par
+    // un administrateur depuis /admin/users, jamais via /register.
     acceptTerms: false
   });
   
@@ -132,37 +135,29 @@ const RegisterPage = () => {
     setErrors({});
 
     try {
-      // ✅ Envoyer toutes les données incluant le rôle
+      // 🔒 Le rôle n'est jamais envoyé par le client : le backend doit
+      // toujours forcer role='user' côté serveur pour toute création via
+      // /auth/register, quoi que le client envoie.
       const data = await register({
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         email: formData.email.toLowerCase().trim(),
         password: formData.password,
-        role: formData.role // ✅ Le rôle est maintenant inclus
       });
 
       if (data.success) {
         setSuccessMessage('Inscription réussie ! Redirection vers la connexion...');
         toast.success('Compte créé avec succès !');
-        
-        // ✅ Afficher le rôle choisi dans le message
-        const roleNames = {
-          user: 'Utilisateur',
-          formateur: 'Formateur',
-          moderator: 'Modérateur',
-          admin: 'Administrateur'
-        };
-        toast(`Type de compte: ${roleNames[formData.role] || 'Utilisateur'}`, {
-          icon: '👤',
-          duration: 3000
-        });
-        
+
         setTimeout(() => {
-          navigate('/login', { 
-            state: { 
+          navigate('/login', {
+            state: {
               message: 'Compte créé avec succès ! Vous pouvez maintenant vous connecter.',
-              email: formData.email
-            } 
+              email: formData.email,
+              // Indique à LoginPage qu'après connexion, l'utilisateur doit
+              // choisir son niveau d'étude avant d'accéder à l'app.
+              requiresLevelSetup: true,
+            }
           });
         }, 2000);
       } else {
@@ -221,14 +216,6 @@ const RegisterPage = () => {
     if (serverError) {
       setServerError('');
     }
-  };
-
-  // Description des rôles
-  const roleDescriptions = {
-    user: 'Accès aux quiz, classement et fonctionnalités de base',
-    formateur: 'Création de quiz, gestion des étudiants et statistiques avancées',
-    moderator: 'Modération du contenu, gestion des signalements et support',
-    admin: 'Accès complet à l\'administration du système'
   };
 
   return (
@@ -487,46 +474,26 @@ const RegisterPage = () => {
             )}
           </div>
 
-          {/* ✅ Rôle / Type de compte - NOUVEAU */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: '0.9rem', color: '#94a3b8', marginBottom: 6 }}>
-              <Shield size={16} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
-              Type de compte
-            </label>
-            <select
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              disabled={loading}
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: 'rgba(255,255,255,0.05)',
-                border: `1px solid ${errors.role ? '#ef4444' : 'rgba(99,102,241,0.2)'}`,
-                borderRadius: 12,
-                color: '#f8fafc',
-                fontSize: '0.95rem',
-                outline: 'none',
-                opacity: loading ? 0.7 : 1,
-                cursor: loading ? 'not-allowed' : 'pointer',
-              }}
-            >
-              <option value="user">👤 Utilisateur standard</option>
-              <option value="formateur">👨‍🏫 Formateur / Créateur de quiz</option>
-              <option value="moderator">🛡️ Modérateur</option>
-              <option value="admin">⚙️ Administrateur (accès complet)</option>
-            </select>
-            <p style={{ 
-              color: '#64748b', 
-              fontSize: '0.75rem', 
-              marginTop: 4,
-              fontStyle: 'italic'
-            }}>
-              {roleDescriptions[formData.role] || 'Choisissez le type de compte qui correspond à votre utilisation'}
-            </p>
-            {errors.role && (
-              <p style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: 4 }}>{errors.role}</p>
-            )}
+          {/* 🔒 Le type de compte (formateur/modérateur/admin) n'est plus
+              choisi ici. Tout nouveau compte est un compte "Utilisateur"
+              standard. Le niveau d'étude est demandé juste après la première
+              connexion (voir ChooseLevelPage), et le passage au statut
+              Formateur se fait uniquement via une demande validée par un
+              administrateur dans /admin/users. */}
+          <div style={{
+            marginBottom: 20,
+            padding: '12px 14px',
+            background: 'rgba(99,102,241,0.06)',
+            border: '1px solid rgba(99,102,241,0.15)',
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}>
+            <Shield size={16} color="#a5b4fc" />
+            <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+              Compte utilisateur standard. Vous choisirez votre niveau d'étude juste après la connexion.
+            </span>
           </div>
 
           {/* Mot de passe */}

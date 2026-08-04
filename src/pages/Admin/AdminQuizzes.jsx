@@ -80,7 +80,9 @@ const AdminQuizzes = () => {
   const [comments, setComments] = useState([]);
 
   useEffect(() => {
-    if (user?.role !== 'admin') {
+    // CORRECTION : le role 'superadmin' etait exclu (meme bug que Navbar.jsx) —
+    // un superadmin se faisait rejeter de cette page malgre des droits superieurs.
+    if (!['admin', 'superadmin'].includes(user?.role)) {
       toast.error('Accès non autorisé');
       navigate('/');
       return;

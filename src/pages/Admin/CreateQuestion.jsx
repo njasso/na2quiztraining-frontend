@@ -452,7 +452,10 @@ const CreateQuestion = () => {
       imageBase64: imageBase64 || '',
       imageMetadata: imageMetadata || { originalName: '', mimeType: '', size: 0, storageType: 'none' },
       matriculeAuteur: user?.matricule || user?.email || '',
-      status: 'pending',
+      // ✅ Circuit de validation (document de recommandations §6.2) :
+      // admin/superadmin publient directement ; un formateur passe par la
+      // file de validation, pour éviter les dérives de contenu.
+      status: ['admin', 'superadmin'].includes(user?.role) ? 'approved' : 'pending',
     };
 
     console.log('[CreateQuestion] 📤 Payload:', {
@@ -486,7 +489,11 @@ const CreateQuestion = () => {
       } else {
         response = await api.post('/questions', payload);
         if (response.data?.success) {
-          toast.success('Question créée et envoyée en validation !');
+          toast.success(
+            ['admin', 'superadmin'].includes(user?.role)
+              ? 'Question créée et publiée !'
+              : 'Question créée et envoyée en validation à un administrateur !'
+          );
           setShowPostSaveModal(true);
           return;
         } else {

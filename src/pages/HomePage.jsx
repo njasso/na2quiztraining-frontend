@@ -31,13 +31,16 @@ const HomePage = () => {
     const fetchAllData = async () => {
       setLoading(true);
       try {
+        // CORRECTION : getStats() renvoie desormais directement l'objet plat
+        // { totalUsers, totalQuizzes, totalResults, averageScore } via la route
+        // publique /stats/public — plus besoin de gerer un niveau data.data.
         const statsData = await getStats();
         if (statsData) {
           setStats({
-            totalUsers: statsData.totalUsers || 0,
-            totalQuizzes: statsData.totalQuizzes || 0,
-            totalResults: statsData.totalResults || 0,
-            averageScore: statsData.averageScore || 0
+            totalUsers: statsData.totalUsers ?? 0,
+            totalQuizzes: statsData.totalQuizzes ?? 0,
+            totalResults: statsData.totalResults ?? 0,
+            averageScore: statsData.averageScore ?? 0
           });
         }
 

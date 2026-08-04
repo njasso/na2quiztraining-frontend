@@ -85,6 +85,34 @@ const PLANS = [
     buttonText: 'Choisir Pro',
     cta: 'pro'
   }
+  // ⚠️ Offre "Famille" retirée de la vente : elle promettait "jusqu'à 5
+  // niveaux d'étude / profils enfants" sous un seul abonnement, mais
+  // l'app ne sait aujourd'hui gérer qu'un seul niveau par compte
+  // (voir SubscriptionContext.PLAN_LIMITS et rapport d'audit §5 —
+  // recommandation : comptes enfants séparés reliés par un familyId).
+  // Vendre cette offre maintenant reviendrait à facturer une
+  // fonctionnalité indisponible. À réintroduire ici une fois ce
+  // mécanisme construit :
+  //
+  // {
+  //   id: 'famille',
+  //   name: 'Famille',
+  //   icon: Users,
+  //   price: '8 000',
+  //   period: 'mois',
+  //   color: '#ec4899',
+  //   popular: false,
+  //   features: [
+  //     { text: "Jusqu'à 5 niveaux d'étude / profils enfants", included: true },
+  //     { text: 'Tout ce qui est dans Premium pour chaque profil', included: true },
+  //     { text: 'Tableau de bord parent centralisé', included: true },
+  //     { text: 'Suivi de progression par enfant', included: true },
+  //     { text: 'Notifications de résultats aux parents', included: true },
+  //     { text: 'Support prioritaire', included: true },
+  //   ],
+  //   buttonText: 'Choisir Famille',
+  //   cta: 'famille'
+  // }
 ];
 
 const PAYMENT_METHODS = [

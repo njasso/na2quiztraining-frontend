@@ -13,21 +13,47 @@ import DOMAIN_DATA, {
   getAllLevels, 
   getAllMatieres,
   getLevelNom,
-  getMatiereNom
+  getMatiereNom,
+  getDomainCode,
+  getMatiereCode
 } from '../data/domainConfig';
 import { generateQuestions, createExam } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { EXAM_VISIBILITY, generateExamCode, parseAssignedList } from '../utils/examVisibility';
+import ExamVisibilityPicker from '../components/ExamVisibilityPicker';
+import {
+  hasEducationScope,
+  isScopeExemptRole,
+  getVisibleSousDomaines,
+  getVisibleLevels,
+  getAllowedMatieres,
+  formatScopeLabel,
+} from '../utils/educationScope';
 import toast from 'react-hot-toast';
 
 import NavHome from '../components/NavHome';
 const GenerateQuizPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+  const { canUseAI, recordAIUsed, remainingAIToday, limits } = useSubscription();
+
+  // Un élève/étudiant standard est enfermé dans son propre périmètre
+  // (domaine + filière + niveau déjà choisis dans ChooseLevelPage) : on ne
+  // lui laisse choisir QUE la matière. Un formateur/admin garde le libre
+  // choix pour créer du contenu multi-niveaux.
+  const scopeLocked = hasEducationScope(user) && !isScopeExemptRole(user);
+
   // État du formulaire - Utilisation des IDs
-  const [selectedDomain, setSelectedDomain] = useState('');
-  const [selectedSousDomaine, setSelectedSousDomaine] = useState('');
-  const [selectedLevel, setSelectedLevel] = useState('');
+  const [selectedDomain, setSelectedDomain] = useState(
+    scopeLocked ? user.education.domainId : ''
+  );
+  const [selectedSousDomaine, setSelectedSousDomaine] = useState(
+    scopeLocked ? user.education.sousDomaineId : ''
+  );
+  const [selectedLevel, setSelectedLevel] = useState(
+    scopeLocked ? user.education.levelId : ''
+  );
   const [selectedMatiere, setSelectedMatiere] = useState('');
   const [questionType, setQuestionType] = useState('single');
   const [numQuestions, setNumQuestions] = useState(10);
@@ -37,15 +63,19 @@ const GenerateQuizPage = () => {
   const [generatedQuiz, setGeneratedQuiz] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [quizName, setQuizName] = useState('');
+  const [visibility, setVisibility] = useState(EXAM_VISIBILITY.PUBLIC);
+  const [assignedToRaw, setAssignedToRaw] = useState('');
   const [currentStep, setCurrentStep] = useState(1);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [error, setError] = useState(null);
 
-  // ✅ Options dynamiques depuis DOMAIN_DATA
+  // ✅ Options dynamiques depuis DOMAIN_DATA — restreintes au périmètre de
+  // l'utilisateur (voir src/utils/educationScope.js). Un formateur/admin
+  // continue de voir toutes les options.
   const domains = getAllDomaines();
-  const sousDomaines = selectedDomain ? getAllSousDomaines(selectedDomain) : [];
-  const levels = selectedSousDomaine ? getAllLevels(selectedDomain, selectedSousDomaine) : [];
-  const matieres = selectedSousDomaine ? getAllMatieres(selectedDomain, selectedSousDomaine) : [];
+  const sousDomaines = selectedDomain ? getVisibleSousDomaines(user, selectedDomain) : [];
+  const levels = selectedSousDomaine ? getVisibleLevels(user, selectedDomain, selectedSousDomaine) : [];
+  const matieres = selectedSousDomaine ? getAllowedMatieres(user, selectedDomain, selectedSousDomaine) : [];
 
   // Vérification de l'authentification
   useEffect(() => {
@@ -55,8 +85,11 @@ const GenerateQuizPage = () => {
     }
   }, [user, navigate]);
 
-  // Reset des sélections
+  // Reset des sélections (uniquement si l'utilisateur a le libre choix —
+  // un compte élève au périmètre verrouillé garde toujours son
+  // domaine/filière/niveau, seule la matière change)
   useEffect(() => {
+    if (scopeLocked) return;
     setSelectedSousDomaine('');
     setSelectedLevel('');
     setSelectedMatiere('');
@@ -65,6 +98,7 @@ const GenerateQuizPage = () => {
   }, [selectedDomain]);
 
   useEffect(() => {
+    if (scopeLocked) return;
     setSelectedLevel('');
     setSelectedMatiere('');
     setGeneratedQuiz(null);
@@ -95,6 +129,25 @@ const GenerateQuizPage = () => {
       toast.error('Veuillez remplir tous les champs obligatoires');
       return;
     }
+
+    // 🔒 Garde anti-contournement : même si le formulaire est verrouillé
+    // par l'UI, on revérifie ici que la sélection reste dans le périmètre
+    // de l'utilisateur avant tout appel réseau (ex: state manipulé via les
+    // devtools, ou changement de user.education en cours de session).
+    if (scopeLocked) {
+      const stillAllowed =
+        String(selectedDomain) === String(user.education.domainId) &&
+        String(selectedSousDomaine) === String(user.education.sousDomaineId) &&
+        String(selectedLevel) === String(user.education.levelId);
+      if (!stillAllowed) {
+        toast.error("Cette sélection ne correspond pas à votre niveau d'étude.");
+        return;
+      }
+    }
+
+    // 🔒 Limite du plan d'abonnement (ex: 3 générations IA/jour en Gratuit).
+    // Bloque et redirige vers /subscription si la limite est atteinte.
+    if (!canUseAI()) return;
 
     setIsLoading(true);
     setError(null);
@@ -134,6 +187,10 @@ const GenerateQuizPage = () => {
       if (questions.length === 0) {
         throw new Error('Aucune question générée');
       }
+
+      // Comptabiliser cette génération dans le quota quotidien du plan
+      // (voir SubscriptionContext.recordAIUsed).
+      recordAIUsed();
 
       const formattedQuestions = questions.map((q, index) => ({
         id: index + 1,
@@ -213,6 +270,15 @@ const GenerateQuizPage = () => {
         totalPoints: generatedQuiz.questions.reduce((sum, q) => sum + (q.points || 1), 0),
         source: 'ai_generated',
         createdBy: user?._id || user?.id,
+        // ✅ Destinataires de l'épreuve (document de recommandations §7)
+        visibility,
+        isPublic: visibility === EXAM_VISIBILITY.PUBLIC,
+        assignedTo: visibility === EXAM_VISIBILITY.ASSIGNED ? parseAssignedList(assignedToRaw) : [],
+        code: generateExamCode(
+          getDomainCode(selectedDomain),
+          getMatiereCode(selectedDomain, selectedSousDomaine, selectedMatiere),
+          getLevelNom(selectedDomain, selectedSousDomaine, selectedLevel)
+        ),
         metadata: {
           generatedAt: new Date().toISOString(),
           model: 'deepseek-chat',
@@ -226,6 +292,9 @@ const GenerateQuizPage = () => {
 
       if (response.success) {
         toast.success('Épreuve enregistrée avec succès !');
+        if (visibility !== EXAM_VISIBILITY.PRIVATE) {
+          toast(`Code de partage : ${examData.code}`, { icon: '🔗', duration: 8000 });
+        }
         navigate('/exams');
       } else {
         throw new Error(response.error || 'Erreur lors de la sauvegarde');
@@ -269,6 +338,23 @@ const GenerateQuizPage = () => {
           </div>
         </div>
 
+        {scopeLocked && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+            padding: '10px 14px', borderRadius: 10,
+            background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
+            color: '#a5b4fc', fontSize: '0.8rem',
+          }}>
+            <Layers size={14} />
+            Votre niveau : <strong>{formatScopeLabel(user)}</strong>
+            <span style={{ marginLeft: 'auto', color: '#64748b' }}>
+              {remainingAIToday === Infinity
+                ? 'Générations IA illimitées'
+                : `${remainingAIToday}/${limits.aiPerDay} générations IA restantes aujourd'hui`}
+            </span>
+          </div>
+        )}
+
         <div style={styles.grid2}>
           <div>
             <label style={styles.label}>
@@ -278,7 +364,8 @@ const GenerateQuizPage = () => {
             <select
               value={selectedDomain}
               onChange={(e) => setSelectedDomain(e.target.value)}
-              style={styles.select}
+              disabled={scopeLocked}
+              style={{ ...styles.select, opacity: scopeLocked ? 0.6 : 1 }}
             >
               <option value="">Sélectionner...</option>
               {domains.map(d => (
@@ -295,8 +382,8 @@ const GenerateQuizPage = () => {
             <select
               value={selectedSousDomaine}
               onChange={(e) => setSelectedSousDomaine(e.target.value)}
-              disabled={!selectedDomain}
-              style={{...styles.select, opacity: !selectedDomain ? 0.5 : 1}}
+              disabled={!selectedDomain || scopeLocked}
+              style={{...styles.select, opacity: (!selectedDomain || scopeLocked) ? 0.6 : 1}}
             >
               <option value="">Sélectionner...</option>
               {sousDomaines.map(sd => (
@@ -313,8 +400,8 @@ const GenerateQuizPage = () => {
             <select
               value={selectedLevel}
               onChange={(e) => setSelectedLevel(e.target.value)}
-              disabled={!selectedSousDomaine}
-              style={{...styles.select, opacity: !selectedSousDomaine ? 0.5 : 1}}
+              disabled={!selectedSousDomaine || scopeLocked}
+              style={{...styles.select, opacity: (!selectedSousDomaine || scopeLocked) ? 0.6 : 1}}
             >
               <option value="">Sélectionner...</option>
               {levels.map(l => (
@@ -463,6 +550,15 @@ const GenerateQuizPage = () => {
               <RefreshCw size={18} />
             </motion.button>
           </div>
+        </div>
+
+        <div style={{ padding: '0 24px' }}>
+          <ExamVisibilityPicker
+            visibility={visibility}
+            onVisibilityChange={setVisibility}
+            assignedToRaw={assignedToRaw}
+            onAssignedToChange={setAssignedToRaw}
+          />
         </div>
 
         <div style={styles.questionList}>

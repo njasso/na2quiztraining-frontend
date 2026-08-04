@@ -287,6 +287,7 @@ export const followUser = async (id) => (await api.post(`/users/${id}/follow`)).
 export const unfollowUser = async (id) => (await api.delete(`/users/${id}/follow`)).data;
 export const deleteAccount = async (id) => (await api.delete(`/users/${id}`)).data;
 export const exportUserData = async () => (await api.get('/users/export-data')).data;
+export const createUser = async (data) => (await api.post('/users', data)).data;
 
 // ✅ ALIAS POUR COMPATIBILITÉ AVEC ProfilePage ET SettingsPage
 export const getUserProfile = async (id) => (await api.get(`/users/${id}`)).data;
@@ -318,6 +319,90 @@ export const updateSettings = async (settings) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
+// GESTION DES COMPTES UTILISATEURS (Administration)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Réinitialiser le mot de passe d'un utilisateur (admin uniquement)
+ */
+export const resetUserPassword = async (userId, newPassword) => {
+  try {
+    const { data } = await api.post(`/users/${userId}/reset-password`, { newPassword });
+    return data;
+  } catch (error) {
+    console.error('❌ Erreur resetUserPassword:', error);
+    throw error.response?.data || { success: false, error: error.message };
+  }
+};
+
+/**
+ * Verrouiller un compte utilisateur
+ */
+export const lockUserAccount = async (userId) => {
+  try {
+    const { data } = await api.post(`/users/${userId}/lock`);
+    return data;
+  } catch (error) {
+    console.error('❌ Erreur lockUserAccount:', error);
+    throw error.response?.data || { success: false, error: error.message };
+  }
+};
+
+/**
+ * Déverrouiller un compte utilisateur
+ */
+export const unlockUserAccount = async (userId) => {
+  try {
+    const { data } = await api.post(`/users/${userId}/unlock`);
+    return data;
+  } catch (error) {
+    console.error('❌ Erreur unlockUserAccount:', error);
+    throw error.response?.data || { success: false, error: error.message };
+  }
+};
+
+/**
+ * Récupérer les sessions actives d'un utilisateur
+ */
+export const getUserSessions = async (userId) => {
+  try {
+    const { data } = await api.get(`/users/${userId}/sessions`);
+    return data;
+  } catch (error) {
+    console.error('❌ Erreur getUserSessions:', error);
+    return [];
+  }
+};
+
+/**
+ * Récupérer l'historique des connexions d'un utilisateur
+ */
+export const getUserLoginHistory = async (userId) => {
+  try {
+    const { data } = await api.get(`/users/${userId}/login-history`);
+    return data;
+  } catch (error) {
+    console.error('❌ Erreur getUserLoginHistory:', error);
+    return [];
+  }
+};
+
+/**
+ * Révoquer une session utilisateur
+ * @param {string} userId - ID de l'utilisateur
+ * @param {string} sessionId - ID de la session ou 'all' pour tout révoquer
+ */
+export const revokeUserSession = async (userId, sessionId) => {
+  try {
+    const { data } = await api.post(`/users/${userId}/sessions/${sessionId}/revoke`);
+    return data;
+  } catch (error) {
+    console.error('❌ Erreur revokeUserSession:', error);
+    throw error.response?.data || { success: false, error: error.message };
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -343,7 +428,7 @@ export const submitQuiz = async (id, answers) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
-// QUESTIONS — Version complète avec gestion de selectedDomaine
+// QUESTIONS
 // ══════════════════════════════════════════════════════════════════════════════
 
 export const getQuestions = async (params = {}) => {
@@ -400,9 +485,6 @@ export const deleteQuestion = async (id) => {
   }
 };
 
-/**
- * Sauvegarder plusieurs questions (import massif)
- */
 export const saveQuestions = async (data) => {
   try {
     let payload = data;
@@ -570,9 +652,13 @@ export const getQuizResults = async (quizId) => (await api.get(`/results/quiz/${
 
 export const getStats = async () => {
   try {
-    return (await api.get('/stats/global')).data;
+    // CORRECTION : /stats/global exigeait une authentification, donc chaque
+    // visiteur non connecte recevait un 401 et la page d'accueil affichait des zeros.
+    // /stats/public est accessible sans connexion et renvoie les memes agregats.
+    const res = await api.get('/stats/public');
+    return res.data?.data || res.data || {};
   } catch {
-    return { totalQuizzes: 0, averageScore: 0, totalUsers: 0 };
+    return { totalQuizzes: 0, averageScore: 0, totalUsers: 0, totalResults: 0 };
   }
 };
 
@@ -743,9 +829,34 @@ export const getCompositions = async () => (await api.get('/compose')).data;
 // CHALLENGES & ACHIEVEMENTS
 // ══════════════════════════════════════════════════════════════════════════════
 
+// NOTE : ces trois fonctions n'ont pas de route backend correspondante
+// (/challenges et /achievements ne sont montees nulle part dans server.js).
+// ChallengesPage.jsx ne les utilise pas — il calcule tout depuis getResults().
+// Conservees ici uniquement si un futur module Challenges/Achievements est prevu ;
+// sinon, les endpoints devront etre crees cote backend avant tout appel reel.
 export const getChallenges = async () => (await api.get('/challenges')).data;
 export const completeChallenge = async (id) => (await api.post(`/challenges/${id}/complete`)).data;
 export const getAchievements = async () => (await api.get('/achievements')).data;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CLASSES (rattachement formateur ↔ apprenants — document de recommandations §4)
+// ══════════════════════════════════════════════════════════════════════════════
+// ⚠️ Ces endpoints nécessitent le backend correspondant (hors de ce dépôt) :
+//   POST   /classes                → { nom, niveauId?, matiereId?, description? }
+//   GET    /classes/mine           → classes du formateur connecté
+//   GET    /classes/:id            → détail + liste des membres
+//   POST   /classes/join           → { code } — l'apprenant rejoint une classe
+//   DELETE /classes/:id/membre/:userId → retirer un membre
+//   POST   /classes/:id/regenerer-code → change le code d'invitation
+
+export const createClasse = async (data) => (await api.post('/classes', data)).data;
+export const getMyClasses = async () => (await api.get('/classes/mine')).data;
+export const getClasseDetails = async (id) => (await api.get(`/classes/${id}`)).data;
+export const joinClasseByCode = async (code) => (await api.post('/classes/join', { code })).data;
+export const removeClasseMember = async (classeId, userId) =>
+  (await api.delete(`/classes/${classeId}/membre/${userId}`)).data;
+export const regenerateClasseCode = async (classeId) =>
+  (await api.post(`/classes/${classeId}/regenerer-code`)).data;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // EXPORT PAR DÉFAUT
@@ -784,6 +895,15 @@ export default {
   unfollowUser,
   deleteAccount,
   exportUserData,
+  createUser,
+  
+  // Gestion des comptes (Admin)
+  resetUserPassword,
+  lockUserAccount,
+  unlockUserAccount,
+  getUserSessions,
+  getUserLoginHistory,
+  revokeUserSession,
   
   // Settings
   getSettings,

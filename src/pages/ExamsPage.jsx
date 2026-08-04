@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { getExams, deleteExam } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
+import { isScopeExemptRole, isContentInScope } from "../utils/educationScope";
+import { canViewExam } from "../utils/examVisibility";
 import toast from "react-hot-toast";
 
 import NavHome from '../components/NavHome';
@@ -41,6 +43,8 @@ const ExamsPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [examCode, setExamCode] = useState("");
+  const [codeLookupLoading, setCodeLookupLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [filter, setFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -60,6 +64,17 @@ const ExamsPage = () => {
         filter,
         limit: 100,
       };
+
+      // 🔒 Un utilisateur standard ne doit recevoir que les examens de son
+      // propre niveau. On transmet le périmètre au backend (qui DOIT filtrer
+      // côté serveur — voir rapport d'audit) et on refiltre aussi côté
+      // client ci-dessous en filet de sécurité, au cas où le backend
+      // renverrait encore tout.
+      if (!isScopeExemptRole(user) && user?.education) {
+        params.domainId = user.education.domainId;
+        params.sousDomaineId = user.education.sousDomaineId;
+        params.levelId = user.education.levelId;
+      }
 
       // ✅ NE PAS envoyer status si 'all'
       if (statusFilter && statusFilter !== "all") {
@@ -86,6 +101,16 @@ const ExamsPage = () => {
         examsArray = data.data;
       } else {
         examsArray = [];
+      }
+
+      // 🔒 Filet de sécurité côté client : ne jamais afficher un examen
+      // hors du périmètre de l'utilisateur, même si le backend en renvoie.
+      if (!isScopeExemptRole(user)) {
+        examsArray = examsArray.filter((exam) => isContentInScope(user, exam));
+        // Une épreuve "assignée" ne doit être visible que par les
+        // apprenants listés (ou son auteur) ; une épreuve "privée" que par
+        // son auteur — voir document de recommandations §7.
+        examsArray = examsArray.filter((exam) => canViewExam(user, exam));
       }
 
       console.log(`📊 ${examsArray.length} examens chargés`);
@@ -167,6 +192,33 @@ const ExamsPage = () => {
     } catch (error) {
       console.error("❌ Erreur suppression:", error);
       toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  /**
+   * Accès direct à une épreuve via son code de partage (document de
+   * recommandations §4.3). Contourne volontairement le filtre de
+   * visibilité/périmètre : présenter le code EST l'autorisation — c'est le
+   * mécanisme prévu pour qu'un formateur partage une épreuve "assignée" à
+   * des apprenants hors de sa liste nommée (ex: via WhatsApp).
+   */
+  const handleAccessByCode = async () => {
+    const code = examCode.trim().toUpperCase();
+    if (!code) return;
+    setCodeLookupLoading(true);
+    try {
+      const data = await getExams({ code });
+      const found = Array.isArray(data) ? data[0] : Array.isArray(data?.data) ? data.data[0] : null;
+      if (!found) {
+        toast.error("Aucune épreuve ne correspond à ce code.");
+        return;
+      }
+      navigate(`/exam/${found._id || found.id}`);
+    } catch (err) {
+      console.error("Erreur recherche par code:", err);
+      toast.error("Impossible de trouver cette épreuve.");
+    } finally {
+      setCodeLookupLoading(false);
     }
   };
 
@@ -713,6 +765,44 @@ const ExamsPage = () => {
               />
             </div>
 
+            {/* ✅ Accès direct via un code de partage (document §4.3) */}
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                type="text"
+                value={examCode}
+                onChange={(e) => setExamCode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAccessByCode()}
+                placeholder="Code d'épreuve (ex: EDU-MAT-TC-A427)"
+                style={{
+                  padding: "10px 12px",
+                  width: 220,
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(16,185,129,0.3)",
+                  borderRadius: 12,
+                  color: "#f8fafc",
+                  outline: "none",
+                  fontSize: "0.85rem",
+                }}
+              />
+              <button
+                onClick={handleAccessByCode}
+                disabled={codeLookupLoading || !examCode.trim()}
+                style={{
+                  padding: "10px 16px",
+                  background: "linear-gradient(135deg, #10b981, #059669)",
+                  border: "none",
+                  borderRadius: 12,
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "0.85rem",
+                  cursor: codeLookupLoading || !examCode.trim() ? "not-allowed" : "pointer",
+                  opacity: codeLookupLoading || !examCode.trim() ? 0.6 : 1,
+                }}
+              >
+                {codeLookupLoading ? "..." : "Accéder"}
+              </button>
+            </div>
+
             {/* ✅ Filtre de statut - 'all' par défaut */}
             <select
               value={statusFilter}
@@ -754,28 +844,30 @@ const ExamsPage = () => {
               <option value="popular">⭐ Populaires</option>
             </select>
 
-            {/* Nouvel examen */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => navigate("/create-exam")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 20px",
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                border: "none",
-                borderRadius: 12,
-                color: "white",
-                fontWeight: 600,
-                cursor: "pointer",
-                fontSize: "0.9rem",
-              }}
-            >
-              <Plus size={16} />
-              Nouvel examen
-            </motion.button>
+            {/* Nouvel examen — réservé aux formateurs/admins */}
+            {isScopeExemptRole(user) && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => navigate("/create-exam")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 20px",
+                  background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  border: "none",
+                  borderRadius: 12,
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: "0.9rem",
+                }}
+              >
+                <Plus size={16} />
+                Nouvel examen
+              </motion.button>
+            )}
           </div>
         </div>
 
@@ -833,9 +925,11 @@ const ExamsPage = () => {
             <p style={{ color: "#64748b", marginBottom: 20 }}>
               {search || statusFilter !== "all"
                 ? "Essayez d'autres filtres ou termes de recherche"
-                : "Créez votre premier examen"}
+                : isScopeExemptRole(user)
+                  ? "Créez votre premier examen"
+                  : "Revenez plus tard, votre formateur n'a pas encore publié d'examen"}
             </p>
-            {!search && statusFilter === "all" && (
+            {!search && statusFilter === "all" && isScopeExemptRole(user) && (
               <button
                 onClick={() => navigate("/create-exam")}
                 style={{

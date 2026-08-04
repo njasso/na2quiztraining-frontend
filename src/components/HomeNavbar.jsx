@@ -3,23 +3,40 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Menu, X, LogIn, UserPlus, Sparkles, ChevronDown, Home, BookOpen, Zap, BarChart2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { isScopeExemptRole } from '../utils/educationScope';
 
 const HomeNavbar = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
 
+  // 🔒 La création de quiz (IA / manuelle / base de données) est réservée
+  // aux formateurs/admins depuis la mise à jour du système de rôles (voir
+  // rapport d'audit §5). On ne met plus ces liens en avant pour un visiteur
+  // ou un élève : ce serait une promesse que son compte ne peut pas tenir.
+  const canCreateContent = isScopeExemptRole(user);
+
   const navItems = [
     { label: 'Accueil', path: '/', icon: <Home size={16} /> },
-    { 
-      label: 'Fonctionnalités', 
+    {
+      label: 'Fonctionnalités',
       icon: <Zap size={16} />,
-      dropdown: [
-        { label: 'Quiz IA', path: '/generate-quiz', icon: '🤖' },
-        { label: 'Création manuelle', path: '/manual', icon: '✍️' },
-        { label: 'Base de données', path: '/database', icon: '📚' },
-        { label: 'Statistiques', path: '/statistics', icon: '📊' },
-      ]
+      dropdown: canCreateContent
+        ? [
+            { label: 'Quiz IA', path: '/generate-quiz', icon: '🤖' },
+            { label: 'Création manuelle', path: '/manual', icon: '✍️' },
+            { label: 'Base de données', path: '/database', icon: '📚' },
+            { label: 'Statistiques', path: '/statistics', icon: '📊' },
+          ]
+        : [
+            // Un élève/visiteur voit ce que la plateforme lui offre à lui :
+            // passer des quiz et suivre ses statistiques — pas les outils
+            // de création réservés aux formateurs.
+            { label: 'Passer un quiz', path: '/quiz-choice', icon: '📖' },
+            { label: 'Statistiques', path: '/statistics', icon: '📊' },
+          ],
     },
     { label: 'Quiz', path: '/quizzes', icon: <BookOpen size={16} /> },
     { label: 'Statistiques', path: '/statistics', icon: <BarChart2 size={16} /> },

@@ -38,23 +38,24 @@ const Navbar = () => {
   // Vérification que user existe avant d'accéder à ses propriétés
   const userRole = user?.role;
 
-  // Déterminer le lien d'administration selon le rôle
+  // ✅ CORRECTION : le rôle 'superadmin' était absent de ces trois fonctions.
+  // Résultat : un superadmin ne voyait AUCUN bouton d'accès à l'administration
+  // dans la barre de navigation (adminLink restait null pour ce rôle).
   const getAdminLink = () => {
-    if (userRole === 'admin') return '/admin';
+    if (userRole === 'admin' || userRole === 'superadmin') return '/admin';
     if (userRole === 'formateur') return '/formateur/dashboard';
     return null;
   };
 
-  // Déterminer le libellé du bouton admin selon le rôle
   const getAdminLabel = () => {
+    if (userRole === 'superadmin') return 'Administration système';
     if (userRole === 'admin') return 'Administration';
     if (userRole === 'formateur') return 'Espace Formateur';
     return null;
   };
 
-  // Déterminer l'icône selon le rôle
   const getAdminIcon = () => {
-    if (userRole === 'admin') return <Shield size={18} />;
+    if (userRole === 'admin' || userRole === 'superadmin') return <Shield size={18} />;
     if (userRole === 'formateur') return <GraduationCap size={18} />;
     return null;
   };
@@ -90,7 +91,7 @@ const Navbar = () => {
         {/* Lien Admin/Formateur (visible selon le rôle) */}
         {adminLink && (
           <button 
-            className={`nav-icon-btn ${userRole === 'admin' ? 'admin-btn' : 'formateur-btn'}`}
+            className={`nav-icon-btn ${(userRole === 'admin' || userRole === 'superadmin') ? 'admin-btn' : 'formateur-btn'}`}
             onClick={() => navigate(adminLink)}
             title={adminLabel}
           >
@@ -153,7 +154,7 @@ const Navbar = () => {
                 <div className="nav-mobile-divider" />
                 <Link
                   to={adminLink}
-                  className={`nav-mobile-link ${userRole === 'admin' ? 'admin-mobile-link' : 'formateur-mobile-link'}`}
+                  className={`nav-mobile-link ${(userRole === 'admin' || userRole === 'superadmin') ? 'admin-mobile-link' : 'formateur-mobile-link'}`}
                   onClick={() => setOpen(false)}
                 >
                   {adminIcon} {adminLabel}

@@ -15,10 +15,14 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { OfflineProvider } from "./contexts/OfflineContext";
+import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import OfflineIndicator from "./components/OfflineIndicator";
 import PrivateRoute from "./components/PrivateRoute";
 import AdminRoute from "./components/AdminRoute";
 import FormateurRoute from "./components/FormateurRoute";
+import RequireEducationLevel from "./components/RequireEducationLevel";
+import SubscriptionBanner from "./components/SubscriptionBanner";
+import ChooseLevelPage from "./pages/ChooseLevelPage";
 
 // ── Nouveaux composants UX ────────────────────────────────────────────────────
 import SplashScreen from "./components/SplashScreen";
@@ -64,6 +68,8 @@ import QCMBankPage from "./pages/Admin/QCMBankPage";
 import FormateurDashboard from "./pages/Formateur/FormateurDashboard";
 import FormateurQuizzes from "./pages/Formateur/FormateurQuizzes";
 import FormateurStats from "./pages/Formateur/FormateurStats";
+import MesClasses from "./pages/Formateur/MesClasses";
+import RejoindreClassePage from "./pages/RejoindreClassePage";
 
 // Pages de Composition d'Examens
 import CreateExamPage from "./pages/CreateExamPage";
@@ -113,6 +119,7 @@ const AppLayout = ({ children }) => {
     "/login",
     "/register",
     "/onboarding",
+    "/choisir-niveau",
     "/dashboard",
     "/cours",
     "/admin",
@@ -172,11 +179,24 @@ const App = () => {
           <Router
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
           >
+            {/* SubscriptionProvider a besoin du Router (useNavigate) */}
+            <SubscriptionProvider>
             <OfflineIndicator />
             <AppLayout>
+              <SubscriptionBanner />
               <Routes>
                 {/* ── Onboarding (1ère visite) ── */}
                 <Route path="/onboarding" element={<OnboardingPage />} />
+
+                {/* ── Choix obligatoire du niveau d'étude ── */}
+                <Route
+                  path="/choisir-niveau"
+                  element={
+                    <PrivateRoute>
+                      <ChooseLevelPage />
+                    </PrivateRoute>
+                  }
+                />
 
                 {/* ========== ROUTES PUBLIQUES ========== */}
                 <Route
@@ -271,9 +291,9 @@ const App = () => {
                 <Route
                   path="/admin/create-question"
                   element={
-                    <AdminRoute>
+                    <FormateurRoute>
                       <CreateQuestion />
-                    </AdminRoute>
+                    </FormateurRoute>
                   }
                 />
                 <Route
@@ -322,6 +342,24 @@ const App = () => {
                     </FormateurRoute>
                   }
                 />
+                <Route
+                  path="/formateur/classes"
+                  element={
+                    <FormateurRoute>
+                      <MesClasses />
+                    </FormateurRoute>
+                  }
+                />
+                <Route
+                  path="/rejoindre-classe"
+                  element={
+                    <PrivateRoute>
+                      <RequireEducationLevel>
+                        <RejoindreClassePage />
+                      </RequireEducationLevel>
+                    </PrivateRoute>
+                  }
+                />
 
                 {/* ========== ROUTES PROTÉGÉES ========== */}
 
@@ -348,7 +386,9 @@ const App = () => {
                   path="/quizzes"
                   element={
                     <PrivateRoute>
-                      <QuizzesPage />
+                      <RequireEducationLevel>
+                        <QuizzesPage />
+                      </RequireEducationLevel>
                     </PrivateRoute>
                   }
                 />
@@ -356,7 +396,9 @@ const App = () => {
                   path="/quiz-choice"
                   element={
                     <PrivateRoute>
-                      <QuizChoicePage />
+                      <RequireEducationLevel>
+                        <QuizChoicePage />
+                      </RequireEducationLevel>
                     </PrivateRoute>
                   }
                 />
@@ -364,7 +406,9 @@ const App = () => {
                   path="/start"
                   element={
                     <PrivateRoute>
-                      <StartQuizPage />
+                      <RequireEducationLevel>
+                        <StartQuizPage />
+                      </RequireEducationLevel>
                     </PrivateRoute>
                   }
                 />
@@ -372,7 +416,9 @@ const App = () => {
                   path="/quiz"
                   element={
                     <PrivateRoute>
-                      <QuizPage />
+                      <RequireEducationLevel>
+                        <QuizPage />
+                      </RequireEducationLevel>
                     </PrivateRoute>
                   }
                 />
@@ -380,7 +426,9 @@ const App = () => {
                   path="/quiz/:domaine?/:niveau?/:matiere?"
                   element={
                     <PrivateRoute>
-                      <QuizPage />
+                      <RequireEducationLevel>
+                        <QuizPage />
+                      </RequireEducationLevel>
                     </PrivateRoute>
                   }
                 />
@@ -428,19 +476,27 @@ const App = () => {
                 />
 
                 {/* Examens */}
+                {/* 🔒 Décision produit (rapport d'audit §5) : la création
+                    et la publication d'examens sont réservées aux
+                    formateurs/admins. Les élèves consultent et passent les
+                    examens via /exams et /exam/:examId, non restreints. */}
                 <Route
                   path="/create-exam"
                   element={
-                    <PrivateRoute>
-                      <CreateExamPage />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <CreateExamPage />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
                 <Route
                   path="/exams"
                   element={
                     <PrivateRoute>
-                      <ExamsPage />
+                      <RequireEducationLevel>
+                        <ExamsPage />
+                      </RequireEducationLevel>
                     </PrivateRoute>
                   }
                 />
@@ -448,34 +504,42 @@ const App = () => {
                   path="/exam/:examId"
                   element={
                     <PrivateRoute>
-                      <QuizCompositionPage />
+                      <RequireEducationLevel>
+                        <QuizCompositionPage />
+                      </RequireEducationLevel>
                     </PrivateRoute>
                   }
                 />
 
-                {/* Création */}
+                {/* Création — réservée aux formateurs/admins (voir note ci-dessus) */}
                 <Route
                   path="/manual"
                   element={
-                    <PrivateRoute>
-                      <ManualQuizCreation />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <ManualQuizCreation />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
                 <Route
                   path="/database"
                   element={
-                    <PrivateRoute>
-                      <DatabaseQuizCreation />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <DatabaseQuizCreation />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
                 <Route
                   path="/compose/file"
                   element={
-                    <PrivateRoute>
-                      <Compose />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <Compose />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
                 <Route
@@ -493,43 +557,53 @@ const App = () => {
                 <Route
                   path="/create/:mode"
                   element={
-                    <PrivateRoute>
-                      <CreateExamPage />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <CreateExamPage />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
 
-                {/* IA */}
+                {/* IA — création réservée aux formateurs/admins */}
                 <Route
                   path="/generate"
                   element={
-                    <PrivateRoute>
-                      <GeneratePage />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <GeneratePage />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
                 <Route
                   path="/generate-quiz"
                   element={
-                    <PrivateRoute>
-                      <GenerateQuizPage />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <GenerateQuizPage />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
                 <Route
                   path="/compose/ai"
                   element={
-                    <PrivateRoute>
-                      <AIGeneratorPage />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <AIGeneratorPage />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
                 <Route
                   path="/ai-quiz"
                   element={
-                    <PrivateRoute>
-                      <AIQuizCreation />
-                    </PrivateRoute>
+                    <FormateurRoute>
+                      <RequireEducationLevel>
+                        <AIQuizCreation />
+                      </RequireEducationLevel>
+                    </FormateurRoute>
                   }
                 />
 
@@ -617,13 +691,13 @@ const App = () => {
                   }
                 />
 
-                {/* ✅ Routes Communautaires (AJOUTÉES) */}
+                {/* ✅ Routes Communautaires */}
                 <Route
                   path="/create-community-quiz"
                   element={
-                    <PrivateRoute>
+                    <FormateurRoute>
                       <CreateCommunityQuizPage />
-                    </PrivateRoute>
+                    </FormateurRoute>
                   }
                 />
 
@@ -659,6 +733,7 @@ const App = () => {
                 },
               }}
             />
+            </SubscriptionProvider>
           </Router>
         </OfflineProvider>
       </AuthProvider>

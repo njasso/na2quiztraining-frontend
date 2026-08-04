@@ -32,11 +32,14 @@ import {
   unfollowUser,
   getUserById,
 } from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
+import { isScopeExemptRole, isContentInScope } from "../utils/educationScope";
 import toast from "react-hot-toast";
 
 import NavHome from '../components/NavHome';
 const CommunityPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("popular");
   const [searchTerm, setSearchTerm] = useState("");
@@ -92,13 +95,20 @@ const CommunityPage = () => {
         }),
       ]);
 
-      const quizzesArray = Array.isArray(quizzes)
+      let quizzesArray = Array.isArray(quizzes)
         ? quizzes
         : quizzes?.data
           ? Array.isArray(quizzes.data)
             ? quizzes.data
             : []
           : [];
+
+      // 🔒 Filet de sécurité côté client : un apprenant ne doit voir que les
+      // quiz communautaires de son propre niveau (document de
+      // recommandations §5 — même règle que ExamsPage.jsx).
+      if (!isScopeExemptRole(user)) {
+        quizzesArray = quizzesArray.filter((q) => isContentInScope(user, q));
+      }
 
       const creatorsArray = Array.isArray(creators)
         ? creators
@@ -260,16 +270,18 @@ const CommunityPage = () => {
             </div>
           </div>
 
-          {/* ✅ Bouton Créer un quiz communautaire */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => navigate("/create-community-quiz")}
-            style={styles.createButton}
-          >
-            <Plus size={20} />
-            Créer un quiz communautaire
-          </motion.button>
+          {/* ✅ Bouton Créer un quiz communautaire — réservé formateur/admin */}
+          {isScopeExemptRole(user) && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => navigate("/create-community-quiz")}
+              style={styles.createButton}
+            >
+              <Plus size={20} />
+              Créer un quiz communautaire
+            </motion.button>
+          )}
         </div>
 
         {/* Barre de recherche et filtres */}
@@ -305,9 +317,11 @@ const CommunityPage = () => {
             <p style={styles.emptySubtext}>
               {searchTerm
                 ? "Essayez d'autres termes de recherche"
-                : "Soyez le premier à créer un quiz communautaire !"}
+                : isScopeExemptRole(user)
+                  ? "Soyez le premier à créer un quiz communautaire !"
+                  : "Revenez plus tard, aucun formateur n'a encore publié de quiz pour votre niveau."}
             </p>
-            {!searchTerm && (
+            {!searchTerm && isScopeExemptRole(user) && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}

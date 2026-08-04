@@ -19,10 +19,22 @@ import DOMAIN_DATA, {
   getLevelNom,
   getMatiereNom,
   getDomainNom,
-  getSousDomaineNom
+  getSousDomaineNom,
+  getDomainCode,
+  getMatiereCode
 } from '../data/domainConfig';
 import { getQuestions, createExam } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import {
+  hasEducationScope,
+  isScopeExemptRole,
+  getVisibleSousDomaines,
+  getVisibleLevels,
+  getAllowedMatieres,
+} from '../utils/educationScope';
+import { EXAM_VISIBILITY, generateExamCode, parseAssignedList } from '../utils/examVisibility';
+import ExamVisibilityPicker from '../components/ExamVisibilityPicker';
 import toast from 'react-hot-toast';
 
 import NavHome from '../components/NavHome';
@@ -42,11 +54,13 @@ const itemVariants = {
 const DatabaseQuizCreation = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { canCreateQuiz, recordQuizCreated } = useSubscription();
+  const scopeLocked = hasEducationScope(user) && !isScopeExemptRole(user);
   
-  // État des filtres
-  const [selectedDomain, setSelectedDomain] = useState('');
-  const [selectedSousDomaine, setSelectedSousDomaine] = useState('');
-  const [selectedLevel, setSelectedLevel] = useState('');
+  // État des filtres — pré-rempli et verrouillé au niveau de l'utilisateur
+  const [selectedDomain, setSelectedDomain] = useState(scopeLocked ? user.education.domainId : '');
+  const [selectedSousDomaine, setSelectedSousDomaine] = useState(scopeLocked ? user.education.sousDomaineId : '');
+  const [selectedLevel, setSelectedLevel] = useState(scopeLocked ? user.education.levelId : '');
   const [selectedMatiere, setSelectedMatiere] = useState('');
   
   // État du formulaire
@@ -65,12 +79,14 @@ const DatabaseQuizCreation = () => {
   const [fetchingQuestions, setFetchingQuestions] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [visibility, setVisibility] = useState(EXAM_VISIBILITY.PUBLIC);
+  const [assignedToRaw, setAssignedToRaw] = useState('');
   
-  // Options dynamiques depuis DOMAIN_DATA
+  // Options dynamiques depuis DOMAIN_DATA — restreintes au périmètre
   const domains = getAllDomaines();
-  const sousDomaines = selectedDomain ? getAllSousDomaines(selectedDomain) : [];
-  const levels = selectedSousDomaine ? getAllLevels(selectedDomain, selectedSousDomaine) : [];
-  const matieres = selectedSousDomaine ? getAllMatieres(selectedDomain, selectedSousDomaine) : [];
+  const sousDomaines = selectedDomain ? getVisibleSousDomaines(user, selectedDomain) : [];
+  const levels = selectedSousDomaine ? getVisibleLevels(user, selectedDomain, selectedSousDomaine) : [];
+  const matieres = selectedSousDomaine ? getAllowedMatieres(user, selectedDomain, selectedSousDomaine) : [];
 
   // Helpers pour les noms
   const getLevelName = (levelId) => {
@@ -252,6 +268,21 @@ const DatabaseQuizCreation = () => {
       return;
     }
 
+    // 🔒 Garde anti-contournement du périmètre éducatif
+    if (scopeLocked) {
+      const stillAllowed =
+        String(selectedDomain) === String(user.education.domainId) &&
+        String(selectedSousDomaine) === String(user.education.sousDomaineId) &&
+        String(selectedLevel) === String(user.education.levelId);
+      if (!stillAllowed) {
+        toast.error("Cette sélection ne correspond pas à votre niveau d'étude.");
+        return;
+      }
+    }
+
+    // 🔒 Limite du plan d'abonnement (ex: 5 quiz/jour en Gratuit)
+    if (!canCreateQuiz()) return;
+
     setSaving(true);
     setError(null);
 
@@ -300,6 +331,15 @@ const DatabaseQuizCreation = () => {
         generationMode: 'Manuel',
         status: 'published', // ✅ PUBLIÉ DIRECTEMENT
         source: 'database',
+        // ✅ Destinataires de l'épreuve (document de recommandations §7)
+        visibility,
+        isPublic: visibility === EXAM_VISIBILITY.PUBLIC,
+        assignedTo: visibility === EXAM_VISIBILITY.ASSIGNED ? parseAssignedList(assignedToRaw) : [],
+        code: generateExamCode(
+          getDomainCode(selectedDomain),
+          getMatiereCode(selectedDomain, selectedSousDomaine, selectedMatiere),
+          levelNom
+        ),
         metadata: {
           createdAt: new Date().toISOString(),
           questionCount: formattedQuestions.length,
@@ -312,11 +352,15 @@ const DatabaseQuizCreation = () => {
       const response = await createExam(examData);
 
       if (response.success) {
+        recordQuizCreated();
         toast.success('✅ Épreuve publiée avec succès!', {
           duration: 4000,
           icon: '🎉'
         });
-        
+        if (visibility !== EXAM_VISIBILITY.PRIVATE) {
+          toast(`Code de partage : ${examData.code}`, { icon: '🔗', duration: 8000 });
+        }
+
         // Rediriger vers la page des examens après un court délai
         setTimeout(() => {
           navigate('/exams');
@@ -634,6 +678,13 @@ const DatabaseQuizCreation = () => {
               />
             </div>
 
+            <ExamVisibilityPicker
+              visibility={visibility}
+              onVisibilityChange={setVisibility}
+              assignedToRaw={assignedToRaw}
+              onAssignedToChange={setAssignedToRaw}
+            />
+
             <div style={{ borderTop: '1px solid rgba(59,130,246,0.1)', paddingTop: '16px', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '12px' }}>
                 Filtres de recherche
@@ -652,6 +703,7 @@ const DatabaseQuizCreation = () => {
                     setSelectedLevel('');
                     setSelectedMatiere('');
                   }}
+                  disabled={scopeLocked}
                   style={{
                     width: '100%',
                     padding: '8px 10px',
@@ -661,6 +713,7 @@ const DatabaseQuizCreation = () => {
                     color: '#f8fafc',
                     fontSize: '0.85rem',
                     outline: 'none',
+                    opacity: scopeLocked ? 0.6 : 1,
                   }}
                 >
                   <option value="">Sélectionnez...</option>
@@ -683,6 +736,7 @@ const DatabaseQuizCreation = () => {
                       setSelectedLevel('');
                       setSelectedMatiere('');
                     }}
+                    disabled={scopeLocked}
                     style={{
                       width: '100%',
                       padding: '8px 10px',
@@ -692,6 +746,7 @@ const DatabaseQuizCreation = () => {
                       color: '#f8fafc',
                       fontSize: '0.85rem',
                       outline: 'none',
+                      opacity: scopeLocked ? 0.6 : 1,
                     }}
                   >
                     <option value="">Sélectionnez...</option>
@@ -711,6 +766,7 @@ const DatabaseQuizCreation = () => {
                   <select
                     value={selectedLevel}
                     onChange={(e) => setSelectedLevel(e.target.value)}
+                    disabled={scopeLocked}
                     style={{
                       width: '100%',
                       padding: '8px 10px',
@@ -720,6 +776,7 @@ const DatabaseQuizCreation = () => {
                       color: '#f8fafc',
                       fontSize: '0.85rem',
                       outline: 'none',
+                      opacity: scopeLocked ? 0.6 : 1,
                     }}
                   >
                     <option value="">Sélectionnez...</option>

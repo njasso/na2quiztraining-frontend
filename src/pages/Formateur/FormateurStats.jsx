@@ -38,7 +38,7 @@ const FormateurStats = () => {
   const [recentResults, setRecentResults] = useState([]);
 
   useEffect(() => {
-    if (user?.role !== 'formateur' && user?.role !== 'admin') {
+    if (!['formateur', 'admin', 'superadmin'].includes(user?.role)) {
       toast.error('Accès non autorisé');
       navigate('/');
       return;

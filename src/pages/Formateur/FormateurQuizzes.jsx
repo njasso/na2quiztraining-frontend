@@ -29,7 +29,7 @@ const FormateurQuizzes = () => {
   const [selectedQuiz, setSelectedQuiz] = useState(null);
 
   useEffect(() => {
-    if (user?.role !== 'formateur' && user?.role !== 'admin') {
+    if (!['formateur', 'admin', 'superadmin'].includes(user?.role)) {
       toast.error('Accès non autorisé');
       navigate('/');
       return;

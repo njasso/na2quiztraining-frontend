@@ -20,20 +20,34 @@ import DOMAIN_DATA, {
   getAllMatieres,
 } from "../data/domainConfig";
 import { getQuestions } from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  hasEducationScope,
+  isScopeExemptRole,
+  getVisibleSousDomaines,
+  getVisibleLevels,
+  getAllowedMatieres,
+  formatScopeLabel,
+} from "../utils/educationScope";
 import toast from "react-hot-toast";
 
 import NavHome from '../components/NavHome';
 const StartQuizPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // 🔒 Un élève standard ne doit voir que son propre niveau (voir rapport
+  // d'audit) : domaine/sous-domaine/niveau sont pré-remplis et verrouillés,
+  // seule la matière reste un choix libre parmi celles autorisées.
+  const scopeLocked = hasEducationScope(user) && !isScopeExemptRole(user);
   const savedProfile = JSON.parse(localStorage.getItem("userProfile")) || {};
 
   const [formData, setFormData] = useState({
-    firstName: savedProfile.firstName || "",
-    lastName: savedProfile.lastName || "",
+    firstName: savedProfile.firstName || user?.firstName || "",
+    lastName: savedProfile.lastName || user?.lastName || "",
     avatar: savedProfile.avatar || "",
-    domaine: "",
-    sousDomaine: "",
-    niveau: "",
+    domaine: scopeLocked ? user.education.domainId : "",
+    sousDomaine: scopeLocked ? user.education.sousDomaineId : "",
+    niveau: scopeLocked ? user.education.levelId : "",
     matiere: "",
     duration: 10,
     questionCount: 10,
@@ -65,7 +79,8 @@ const StartQuizPage = () => {
     setAvailableOptions((prev) => ({ ...prev, domaines }));
   }, []);
 
-  // ✅ Mettre à jour les sous-domaines quand le domaine change
+  // ✅ Mettre à jour les sous-domaines quand le domaine change (restreint au
+  // périmètre de l'utilisateur — voir educationScope.js)
   useEffect(() => {
     if (!formData.domaine) {
       setAvailableOptions((prev) => ({
@@ -77,41 +92,46 @@ const StartQuizPage = () => {
       return;
     }
 
-    const sousDomaines = getAllSousDomaines(formData.domaine);
+    const sousDomaines = getVisibleSousDomaines(user, formData.domaine);
     setAvailableOptions((prev) => ({
       ...prev,
       sousDomaines,
-      niveaux: [],
-      matieres: [],
+      niveaux: scopeLocked ? prev.niveaux : [],
+      matieres: scopeLocked ? prev.matieres : [],
     }));
-    setFormData((prev) => ({
-      ...prev,
-      sousDomaine: "",
-      niveau: "",
-      matiere: "",
-    }));
+    if (!scopeLocked) {
+      setFormData((prev) => ({
+        ...prev,
+        sousDomaine: "",
+        niveau: "",
+        matiere: "",
+      }));
+    }
   }, [formData.domaine]);
 
-  // ✅ Mettre à jour les niveaux quand le sous-domaine change
+  // ✅ Mettre à jour les niveaux quand le sous-domaine change (restreint)
   useEffect(() => {
     if (!formData.domaine || !formData.sousDomaine) {
       setAvailableOptions((prev) => ({ ...prev, niveaux: [], matieres: [] }));
       return;
     }
 
-    const niveaux = getAllLevels(formData.domaine, formData.sousDomaine);
-    setAvailableOptions((prev) => ({ ...prev, niveaux, matieres: [] }));
-    setFormData((prev) => ({ ...prev, niveau: "", matiere: "" }));
+    const niveaux = getVisibleLevels(user, formData.domaine, formData.sousDomaine);
+    setAvailableOptions((prev) => ({ ...prev, niveaux, matieres: scopeLocked ? prev.matieres : [] }));
+    if (!scopeLocked) {
+      setFormData((prev) => ({ ...prev, niveau: "", matiere: "" }));
+    }
   }, [formData.domaine, formData.sousDomaine]);
 
-  // ✅ Mettre à jour les matières quand le niveau change
+  // ✅ Mettre à jour les matières quand le niveau change (matières
+  // autorisées uniquement — voir getAllowedMatieres)
   useEffect(() => {
     if (!formData.domaine || !formData.sousDomaine) {
       setAvailableOptions((prev) => ({ ...prev, matieres: [] }));
       return;
     }
 
-    const matieres = getAllMatieres(formData.domaine, formData.sousDomaine);
+    const matieres = getAllowedMatieres(user, formData.domaine, formData.sousDomaine);
     setAvailableOptions((prev) => ({ ...prev, matieres }));
     setFormData((prev) => ({ ...prev, matiere: "" }));
   }, [formData.domaine, formData.sousDomaine]);
@@ -284,6 +304,19 @@ const StartQuizPage = () => {
     if (!isFormValid) {
       toast.error("Veuillez remplir tous les champs obligatoires");
       return;
+    }
+
+    // 🔒 Garde anti-contournement : la sélection doit rester dans le
+    // périmètre de l'utilisateur même si le formulaire a été manipulé.
+    if (scopeLocked) {
+      const stillAllowed =
+        String(formData.domaine) === String(user.education.domainId) &&
+        String(formData.sousDomaine) === String(user.education.sousDomaineId) &&
+        String(formData.niveau) === String(user.education.levelId);
+      if (!stillAllowed) {
+        toast.error("Cette sélection ne correspond pas à votre niveau d'étude.");
+        return;
+      }
     }
 
     if (availableQuestionCount === 0) {
@@ -612,6 +645,7 @@ const StartQuizPage = () => {
                     onChange={(e) =>
                       setFormData({ ...formData, domaine: e.target.value })
                     }
+                    disabled={scopeLocked}
                     style={{
                       width: "100%",
                       padding: 12,
@@ -620,6 +654,7 @@ const StartQuizPage = () => {
                       borderRadius: 10,
                       color: "#f8fafc",
                       outline: "none",
+                      opacity: scopeLocked ? 0.6 : 1,
                     }}
                     required
                   >
@@ -652,6 +687,7 @@ const StartQuizPage = () => {
                           sousDomaine: e.target.value,
                         })
                       }
+                      disabled={scopeLocked}
                       style={{
                         width: "100%",
                         padding: 12,
@@ -660,6 +696,7 @@ const StartQuizPage = () => {
                         borderRadius: 10,
                         color: "#f8fafc",
                         outline: "none",
+                        opacity: scopeLocked ? 0.6 : 1,
                       }}
                       required
                     >
@@ -699,6 +736,7 @@ const StartQuizPage = () => {
                       onChange={(e) =>
                         setFormData({ ...formData, niveau: e.target.value })
                       }
+                      disabled={scopeLocked}
                       style={{
                         width: "100%",
                         padding: 12,
@@ -707,6 +745,7 @@ const StartQuizPage = () => {
                         borderRadius: 10,
                         color: "#f8fafc",
                         outline: "none",
+                        opacity: scopeLocked ? 0.6 : 1,
                       }}
                       required
                     >

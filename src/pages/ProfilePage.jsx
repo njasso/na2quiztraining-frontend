@@ -51,6 +51,7 @@ import {
   Linkedin,
   Github,
   Twitter,
+  GraduationCap,
 } from "lucide-react";
 import {
   getUserProfile,
@@ -997,6 +998,28 @@ const ProfilePage = () => {
 
         {/* Actions */}
         <div style={styles.actionsContainer}>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate("/choisir-niveau")}
+            style={styles.actionButton}
+          >
+            <GraduationCap size={16} />
+            {profile?.education ? "Modifier mon niveau d'étude" : "Choisir mon niveau d'étude"}
+          </motion.button>
+
+          {!['formateur', 'admin', 'superadmin', 'moderator'].includes(profile?.role) && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => navigate("/rejoindre-classe")}
+              style={styles.actionButton}
+            >
+              <Users size={16} />
+              Rejoindre une classe
+            </motion.button>
+          )}
+
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}

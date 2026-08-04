@@ -19,23 +19,48 @@ import {
 } from "lucide-react";
 import { createQuiz } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
+import { useSubscription } from "../contexts/SubscriptionContext";
+import {
+  getAllDomaines,
+  getLevelNom,
+} from "../data/domainConfig";
+import {
+  hasEducationScope,
+  isScopeExemptRole,
+  getVisibleSousDomaines,
+  getVisibleLevels,
+  getAllowedMatieres,
+} from "../utils/educationScope";
 import toast from "react-hot-toast";
 
 import NavHome from '../components/NavHome';
 const CreateCommunityQuizPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { canCreateQuiz, recordQuizCreated } = useSubscription();
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    category: "",
+    // ✅ Document de recommandations §5 : les quiz communautaires suivent
+    // désormais le même référentiel que les épreuves, pour rester filtrés
+    // par niveau côté apprenant (voir CommunityPage.jsx).
+    domainId: "",
+    sousDomaineId: "",
+    levelId: "",
+    matiereId: "",
     difficulty: "moyen",
     isPublic: true,
     tags: [],
     questions: [],
   });
+
+  const scopeLocked = hasEducationScope(user) && !isScopeExemptRole(user);
+  const domains = getAllDomaines();
+  const sousDomaines = formData.domainId ? getVisibleSousDomaines(user, formData.domainId) : [];
+  const levels = formData.sousDomaineId ? getVisibleLevels(user, formData.domainId, formData.sousDomaineId) : [];
+  const matieres = formData.sousDomaineId ? getAllowedMatieres(user, formData.domainId, formData.sousDomaineId) : [];
 
   const [currentQuestion, setCurrentQuestion] = useState({
     text: "",
@@ -97,17 +122,40 @@ const CreateCommunityQuizPage = () => {
       toast.error("Le titre est requis");
       return;
     }
+    if (!formData.domainId || !formData.sousDomaineId || !formData.levelId || !formData.matiereId) {
+      toast.error("Veuillez sélectionner le référentiel complet (domaine, filière, niveau, matière)");
+      return;
+    }
     if (formData.questions.length < 1) {
       toast.error("Ajoutez au moins une question");
       return;
     }
+
+    // 🔒 Garde anti-contournement, comme sur les autres flux de création.
+    if (scopeLocked) {
+      const stillAllowed =
+        String(formData.domainId) === String(user.education.domainId) &&
+        String(formData.sousDomaineId) === String(user.education.sousDomaineId) &&
+        String(formData.levelId) === String(user.education.levelId);
+      if (!stillAllowed) {
+        toast.error("Cette sélection ne correspond pas à votre niveau d'étude.");
+        return;
+      }
+    }
+
+    // 🔒 Même quota quotidien que les autres flux de création (Manuel,
+    // Banque, IA) — sans ça, ce circuit contournait la limite du plan.
+    if (!canCreateQuiz()) return;
 
     setLoading(true);
     try {
       const quizData = {
         title: formData.title.trim(),
         description: formData.description.trim(),
-        category: formData.category,
+        domainId: formData.domainId,
+        sousDomaineId: formData.sousDomaineId,
+        levelId: formData.levelId,
+        matiereId: formData.matiereId,
         difficulty: formData.difficulty,
         isPublic: formData.isPublic,
         tags: formData.tags,
@@ -126,6 +174,7 @@ const CreateCommunityQuizPage = () => {
       const response = await createQuiz(quizData);
       console.log("✅ Réponse:", response);
 
+      recordQuizCreated();
       toast.success("🎉 Quiz communautaire créé avec succès !");
       setTimeout(() => navigate("/community"), 1500);
     } catch (error) {
@@ -203,23 +252,72 @@ const CreateCommunityQuizPage = () => {
               }}
             >
               <div style={styles.field}>
-                <label style={styles.label}>Catégorie</label>
+                <label style={styles.label}>Domaine</label>
                 <select
-                  value={formData.category}
+                  value={formData.domainId}
                   onChange={(e) =>
                     setFormData((prev) => ({
                       ...prev,
-                      category: e.target.value,
+                      domainId: e.target.value,
+                      sousDomaineId: '',
+                      levelId: '',
+                      matiereId: '',
                     }))
                   }
-                  style={styles.select}
+                  disabled={scopeLocked}
+                  style={{ ...styles.select, opacity: scopeLocked ? 0.6 : 1 }}
                 >
                   <option value="">Sélectionner...</option>
-                  <option value="sciences">Sciences</option>
-                  <option value="mathematiques">Mathématiques</option>
-                  <option value="histoire">Histoire</option>
-                  <option value="langues">Langues</option>
-                  <option value="culture-generale">Culture Générale</option>
+                  {domains.map((d) => (
+                    <option key={d.id} value={d.id}>{d.nom}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.field}>
+                <label style={styles.label}>Filière</label>
+                <select
+                  value={formData.sousDomaineId}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, sousDomaineId: e.target.value, levelId: '', matiereId: '' }))
+                  }
+                  disabled={scopeLocked || !formData.domainId}
+                  style={{ ...styles.select, opacity: (scopeLocked || !formData.domainId) ? 0.6 : 1 }}
+                >
+                  <option value="">Sélectionner...</option>
+                  {sousDomaines.map((sd) => (
+                    <option key={sd.id} value={sd.id}>{sd.nom}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.field}>
+                <label style={styles.label}>Niveau</label>
+                <select
+                  value={formData.levelId}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, levelId: e.target.value }))}
+                  disabled={scopeLocked || !formData.sousDomaineId}
+                  style={{ ...styles.select, opacity: (scopeLocked || !formData.sousDomaineId) ? 0.6 : 1 }}
+                >
+                  <option value="">Sélectionner...</option>
+                  {levels.map((l) => (
+                    <option key={l.id} value={l.id}>{l.nom}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.field}>
+                <label style={styles.label}>Matière</label>
+                <select
+                  value={formData.matiereId}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, matiereId: e.target.value }))}
+                  disabled={!formData.sousDomaineId}
+                  style={{ ...styles.select, opacity: !formData.sousDomaineId ? 0.6 : 1 }}
+                >
+                  <option value="">Sélectionner...</option>
+                  {matieres.map((m) => (
+                    <option key={m.id} value={m.id}>{m.nom}</option>
+                  ))}
                 </select>
               </div>
 

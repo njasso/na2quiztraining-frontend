@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import api from "../services/api";
 import toast from "react-hot-toast";
+import { useSubscription } from "../contexts/SubscriptionContext";
 
 import NavHome from '../components/NavHome';
 // ============================================
@@ -85,6 +86,7 @@ const QuizCompositionPage = () => {
   const { examId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { canExportBulletin, recordExport } = useSubscription();
 
   // États
   const [exam, setExam] = useState(null);
@@ -384,9 +386,14 @@ const QuizCompositionPage = () => {
       return;
     }
 
+    // 🔒 Le téléchargement de bulletin dépend du plan d'abonnement (voir
+    // document de recommandations §9.3 / SubscriptionContext.PLAN_FEATURES).
+    if (!canExportBulletin()) return;
+
     if (typeof resultId === "string" && resultId.startsWith("local_")) {
       toast.info("Résultat local - génération du bulletin en cours...");
       generateLocalBulletin();
+      recordExport();
       return;
     }
 
@@ -396,7 +403,8 @@ const QuizCompositionPage = () => {
 
     window.open(url, "_blank");
     toast.success("Téléchargement du bulletin...");
-  }, [resultId]);
+    recordExport();
+  }, [resultId, canExportBulletin, recordExport]);
 
   // ✅ Fonction handlePrintBulletin manquante
   const handlePrintBulletin = useCallback(() => {
@@ -404,6 +412,9 @@ const QuizCompositionPage = () => {
       toast.error("Aucun résultat à imprimer");
       return;
     }
+
+    // 🔒 Même règle que le téléchargement (voir handleDownloadBulletin).
+    if (!canExportBulletin()) return;
 
     if (typeof resultId === "string" && resultId.startsWith("local_")) {
       toast.info("Résultat local - impression non disponible");
@@ -417,8 +428,10 @@ const QuizCompositionPage = () => {
     const printWindow = window.open(url, "_blank");
     if (!printWindow) {
       toast.error("Popup bloqué. Veuillez autoriser les popups.");
+    } else {
+      recordExport();
     }
-  }, [resultId]);
+  }, [resultId, canExportBulletin, recordExport]);
 
   // ✅ Génération de bulletin local (fallback)
   const generateLocalBulletin = useCallback(() => {

@@ -394,7 +394,7 @@ const LoginPage = () => {
           {/* Démo */}
           <div style={{ marginTop: 20, padding: '12px', background: 'rgba(99,102,241,0.05)', borderRadius: 8 }}>
             <p style={{ color: '#64748b', fontSize: '0.8rem', textAlign: 'center', margin: 0 }}>
-              Démo : demo@na2quiz.com / demo123
+              Contactez l'administrateur : efelixmagloire@gmail.com
             </p>
           </div>
         </form>

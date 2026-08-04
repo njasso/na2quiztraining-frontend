@@ -13,28 +13,44 @@ import DOMAIN_DATA, {
   getAllLevels, 
   getAllMatieres,
   getLevelNom,
-  getMatiereNom
+  getMatiereNom,
+  getDomainCode,
+  getMatiereCode
 } from '../data/domainConfig';
 import { createExam } from '../services/api';
+import http from '../services/http';
 import { useAuth } from '../contexts/AuthContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import {
+  hasEducationScope,
+  isScopeExemptRole,
+  getVisibleSousDomaines,
+  getVisibleLevels,
+  getAllowedMatieres,
+} from '../utils/educationScope';
+import { EXAM_VISIBILITY, generateExamCode, parseAssignedList } from '../utils/examVisibility';
+import ExamVisibilityPicker from '../components/ExamVisibilityPicker';
 import toast from 'react-hot-toast';
 
 import NavHome from '../components/NavHome';
 const ManualQuizCreation = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { canCreateQuiz, recordQuizCreated } = useSubscription();
+  const scopeLocked = hasEducationScope(user) && !isScopeExemptRole(user);
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   
-  // ✅ Utilisation des IDs
+  // ✅ Utilisation des IDs — pré-rempli et verrouillé au niveau de
+  // l'utilisateur quand il en a un (compte élève standard)
   const [quizInfo, setQuizInfo] = useState({
     title: '',
     description: '',
     teacherName: '',
     teacherGrade: '',
-    domain: '',
-    sousDomaine: '',
-    level: '',
+    domain: scopeLocked ? user.education.domainId : '',
+    sousDomaine: scopeLocked ? user.education.sousDomaineId : '',
+    level: scopeLocked ? user.education.levelId : '',
     matiere: '',
     duration: 60,
     passingScore: 70,
@@ -52,12 +68,22 @@ const ManualQuizCreation = () => {
   });
   const [editingIndex, setEditingIndex] = useState(-1);
   const [showPreview, setShowPreview] = useState(false);
+  const [visibility, setVisibility] = useState(EXAM_VISIBILITY.PUBLIC);
+  const [assignedToRaw, setAssignedToRaw] = useState('');
+  // ✅ Document de recommandations §8 : si le format respecte le modèle
+  // complet (référentiel + chapitre), proposer d'enrichir la banque
+  // commune plutôt que de garder les questions strictement privées à cette
+  // épreuve. Coché par défaut, décochable.
+  const [chapter, setChapter] = useState('');
+  const [addToBank, setAddToBank] = useState(true);
+  const [savingToBank, setSavingToBank] = useState(false);
 
-  // ✅ Options dynamiques depuis DOMAIN_DATA
+  // ✅ Options dynamiques depuis DOMAIN_DATA — restreintes au périmètre de
+  // l'utilisateur (un élève ne voit que sa filière/son niveau/ses matières)
   const domains = getAllDomaines();
-  const sousDomaines = quizInfo.domain ? getAllSousDomaines(quizInfo.domain) : [];
-  const levels = quizInfo.sousDomaine ? getAllLevels(quizInfo.domain, quizInfo.sousDomaine) : [];
-  const matieres = quizInfo.sousDomaine ? getAllMatieres(quizInfo.domain, quizInfo.sousDomaine) : [];
+  const sousDomaines = quizInfo.domain ? getVisibleSousDomaines(user, quizInfo.domain) : [];
+  const levels = quizInfo.sousDomaine ? getVisibleLevels(user, quizInfo.domain, quizInfo.sousDomaine) : [];
+  const matieres = quizInfo.sousDomaine ? getAllowedMatieres(user, quizInfo.domain, quizInfo.sousDomaine) : [];
 
   // ✅ Helpers pour les noms
   const getLevelName = (levelId) => {
@@ -180,6 +206,22 @@ const ManualQuizCreation = () => {
       return;
     }
 
+    // 🔒 Garde anti-contournement : la sélection doit rester dans le
+    // périmètre de l'utilisateur même si le formulaire a été manipulé.
+    if (scopeLocked) {
+      const stillAllowed =
+        String(quizInfo.domain) === String(user.education.domainId) &&
+        String(quizInfo.sousDomaine) === String(user.education.sousDomaineId) &&
+        String(quizInfo.level) === String(user.education.levelId);
+      if (!stillAllowed) {
+        toast.error("Cette sélection ne correspond pas à votre niveau d'étude.");
+        return;
+      }
+    }
+
+    // 🔒 Limite du plan d'abonnement (ex: 5 quiz/jour en Gratuit).
+    if (!canCreateQuiz()) return;
+
     setLoading(true);
     
     try {
@@ -216,6 +258,15 @@ const ManualQuizCreation = () => {
         createdBy: user?._id || user?.id,
         teacherName: quizInfo.teacherName,
         teacherGrade: quizInfo.teacherGrade,
+        // ✅ Destinataires de l'épreuve (document de recommandations §7)
+        visibility,
+        isPublic: visibility === EXAM_VISIBILITY.PUBLIC,
+        assignedTo: visibility === EXAM_VISIBILITY.ASSIGNED ? parseAssignedList(assignedToRaw) : [],
+        code: generateExamCode(
+          getDomainCode(quizInfo.domain),
+          getMatiereCode(quizInfo.domain, quizInfo.sousDomaine, quizInfo.matiere),
+          levelNom
+        ),
         metadata: {
           createdAt: new Date().toISOString(),
           type: 'manual',
@@ -228,7 +279,56 @@ const ManualQuizCreation = () => {
       const response = await createExam(examData);
 
       if (response.success) {
+        recordQuizCreated();
         toast.success('Épreuve créée avec succès !');
+        if (visibility !== EXAM_VISIBILITY.PRIVATE) {
+          toast(`Code de partage : ${examData.code}`, { icon: '🔗', duration: 8000 });
+        }
+
+        // ✅ Document de recommandations §8 : verser les questions à la
+        // banque commune si le formateur l'a demandé et que le référentiel
+        // est complet (chapitre renseigné). Échec silencieux question par
+        // question : un rejet réseau sur l'une d'elles ne doit pas remettre
+        // en cause l'épreuve déjà créée avec succès.
+        if (addToBank && chapter.trim()) {
+          setSavingToBank(true);
+          const status = ['admin', 'superadmin'].includes(user?.role) ? 'approved' : 'pending';
+          let okCount = 0;
+          for (const q of questions) {
+            try {
+              await http.post('/questions', {
+                text: q.text,
+                options: q.options,
+                correctAnswer: q.type === 'single' ? q.correctAnswer : undefined,
+                correctAnswers: q.type !== 'single' ? q.correctAnswers : undefined,
+                type: q.type,
+                points: q.points,
+                explanation: q.explanation || '',
+                domainId: quizInfo.domain,
+                sousDomaineId: quizInfo.sousDomaine,
+                levelId: quizInfo.level,
+                matiereId: quizInfo.matiere,
+                chapter: chapter.trim(),
+                origine: 'formateur',
+                status,
+                matriculeAuteur: user?.matricule || user?.email || '',
+              });
+              okCount += 1;
+            } catch (bankErr) {
+              console.error('❌ Question non ajoutée à la banque :', bankErr);
+            }
+          }
+          setSavingToBank(false);
+          if (okCount > 0) {
+            toast.success(
+              status === 'approved'
+                ? `${okCount} question(s) ajoutée(s) à la banque commune.`
+                : `${okCount} question(s) envoyée(s) à la banque, en attente de validation admin.`,
+              { duration: 6000 }
+            );
+          }
+        }
+
         navigate('/exams');
       } else {
         throw new Error(response.error || 'Erreur lors de la création');
@@ -359,6 +459,7 @@ const ManualQuizCreation = () => {
           <select
             value={quizInfo.domain}
             onChange={(e) => setQuizInfo({ ...quizInfo, domain: e.target.value, sousDomaine: '', level: '', matiere: '' })}
+            disabled={scopeLocked}
             style={{
               width: '100%',
               padding: 12,
@@ -367,6 +468,7 @@ const ManualQuizCreation = () => {
               borderRadius: 10,
               color: '#f8fafc',
               outline: 'none',
+              opacity: scopeLocked ? 0.6 : 1,
             }}
           >
             <option value="">Sélectionner...</option>
@@ -385,6 +487,7 @@ const ManualQuizCreation = () => {
             <select
               value={quizInfo.sousDomaine}
               onChange={(e) => setQuizInfo({ ...quizInfo, sousDomaine: e.target.value, level: '', matiere: '' })}
+              disabled={scopeLocked}
               style={{
                 width: '100%',
                 padding: 12,
@@ -393,6 +496,7 @@ const ManualQuizCreation = () => {
                 borderRadius: 10,
                 color: '#f8fafc',
                 outline: 'none',
+                opacity: scopeLocked ? 0.6 : 1,
               }}
             >
               <option value="">Sélectionner...</option>
@@ -414,6 +518,7 @@ const ManualQuizCreation = () => {
             <select
               value={quizInfo.level}
               onChange={(e) => setQuizInfo({ ...quizInfo, level: e.target.value })}
+              disabled={scopeLocked}
               style={{
                 width: '100%',
                 padding: 12,
@@ -422,6 +527,7 @@ const ManualQuizCreation = () => {
                 borderRadius: 10,
                 color: '#f8fafc',
                 outline: 'none',
+                opacity: scopeLocked ? 0.6 : 1,
               }}
             >
               <option value="">Sélectionner...</option>
@@ -503,6 +609,57 @@ const ManualQuizCreation = () => {
           />
         </div>
       </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: 6 }}>
+          <Layers size={14} style={{ display: 'inline', marginRight: 4 }} />
+          Chapitre (pour la banque commune)
+        </label>
+        <input
+          type="text"
+          value={chapter}
+          onChange={(e) => setChapter(e.target.value)}
+          placeholder="Ex: Équations du premier degré"
+          style={{
+            width: '100%',
+            padding: 12,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(99,102,241,0.2)',
+            borderRadius: 10,
+            color: '#f8fafc',
+            outline: 'none',
+          }}
+        />
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20,
+        padding: '12px 14px', borderRadius: 12,
+        background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)',
+      }}>
+        <input
+          type="checkbox"
+          id="addToBank"
+          checked={addToBank}
+          onChange={(e) => setAddToBank(e.target.checked)}
+          disabled={!chapter.trim()}
+          style={{ marginTop: 3, width: 16, height: 16, accentColor: '#10b981' }}
+        />
+        <label htmlFor="addToBank" style={{ fontSize: '0.8rem', color: '#94a3b8', cursor: chapter.trim() ? 'pointer' : 'not-allowed' }}>
+          <strong style={{ color: '#e2e8f0' }}>Ajouter ces questions à la banque commune</strong>
+          <br />
+          {chapter.trim()
+            ? "Elles seront réutilisables par d'autres formateurs pour ce référentiel, après validation par un administrateur."
+            : 'Renseignez le chapitre ci-dessus pour activer cette option — sans lui, le référentiel est incomplet et les questions resteront privées à cette épreuve.'}
+        </label>
+      </div>
+
+      <ExamVisibilityPicker
+        visibility={visibility}
+        onVisibilityChange={setVisibility}
+        assignedToRaw={assignedToRaw}
+        onAssignedToChange={setAssignedToRaw}
+      />
     </motion.div>
   );
 
