@@ -34,6 +34,7 @@ const MesClasses = () => {
     setLoading(true);
     try {
       const data = await getMyClasses();
+      console.log('📦 Données des classes reçues:', data);
       setClasses(Array.isArray(data) ? data : data?.data || []);
     } catch (err) {
       console.error('Erreur chargement classes:', err);
@@ -49,10 +50,103 @@ const MesClasses = () => {
     setSelectedClasse(classe);
     setLoadingMembers(true);
     try {
-      const data = await getClasseDetails(classe._id || classe.id);
-      setMembers(data?.membres || data?.members || []);
+      console.log('🔍 Ouverture de la classe:', classe._id || classe.id);
+      
+      const response = await getClasseDetails(classe._id || classe.id);
+      console.log('📦 Réponse brute de getClasseDetails:', response);
+      
+      // ✅ EXTRACTION CORRECTE - Vérifier toutes les structures possibles
+      let membres = [];
+      
+      // Structure 1: response.data.membres (la plus probable)
+      if (response?.data?.membres && Array.isArray(response.data.membres)) {
+        membres = response.data.membres;
+        console.log('✅ Membres trouvés dans response.data.membres:', membres.length);
+      }
+      // Structure 2: response.membres
+      else if (response?.membres && Array.isArray(response.membres)) {
+        membres = response.membres;
+        console.log('✅ Membres trouvés dans response.membres:', membres.length);
+      }
+      // Structure 3: response.data.data.membres
+      else if (response?.data?.data?.membres && Array.isArray(response.data.data.membres)) {
+        membres = response.data.data.membres;
+        console.log('✅ Membres trouvés dans response.data.data.membres:', membres.length);
+      }
+      // Structure 4: response.data (si c'est directement un tableau)
+      else if (Array.isArray(response?.data)) {
+        membres = response.data;
+        console.log('✅ Membres trouvés dans response.data (tableau):', membres.length);
+      }
+      // Structure 5: response (si c'est directement un tableau)
+      else if (Array.isArray(response)) {
+        membres = response;
+        console.log('✅ Membres trouvés dans response (tableau):', membres.length);
+      }
+      
+      // ✅ Si aucun membre trouvé, essayer d'extraire depuis la classe sélectionnée
+      if (membres.length === 0 && classe.membres && Array.isArray(classe.membres)) {
+        membres = classe.membres;
+        console.log('✅ Membres trouvés dans classe.membres:', membres.length);
+      }
+      
+      // ✅ Si aucun membre trouvé, essayer depuis classe.membresCount
+      if (membres.length === 0 && (classe.membresCount > 0 || classe.membres?.length > 0)) {
+        console.warn('⚠️ membresCount indique', classe.membresCount || classe.membres?.length, 'membres mais aucun membre trouvé');
+        // On va essayer de rafraîchir les données
+        toast.info('Rafraîchissement des données...');
+        await fetchClasses();
+        // Réessayer une fois
+        const refreshedClasse = classes.find(c => (c._id || c.id) === (classe._id || classe.id));
+        if (refreshedClasse?.membres) {
+          membres = refreshedClasse.membres;
+          console.log('✅ Membres trouvés après rafraîchissement:', membres.length);
+        }
+      }
+      
+      console.log(`👥 ${membres.length} membres extraits au total`);
+      
+      // ✅ Filtrer les membres actifs et extraire les données utilisateur
+      const activeMembers = membres
+        .filter(m => m.statut !== 'retire')
+        .map(m => {
+          // Si le membre a un apprenantId, utiliser les données de l'apprenant
+          if (m.apprenantId) {
+            return {
+              ...m,
+              _id: m.apprenantId._id || m.apprenantId.id || m._id,
+              firstName: m.apprenantId.firstName || m.apprenantId.prenom || m.firstName || 'Inconnu',
+              lastName: m.apprenantId.lastName || m.apprenantId.nom || m.lastName || '',
+              email: m.apprenantId.email || m.email || '',
+              // Garder une référence à l'apprenant original
+              apprenant: m.apprenantId
+            };
+          }
+          return m;
+        });
+      
+      console.log(`✅ ${activeMembers.length} membres actifs extraits`);
+      
+      // ✅ Afficher les détails des membres pour déboguer
+      activeMembers.forEach((m, i) => {
+        console.log(`👤 Membre ${i + 1}:`, {
+          id: m._id || m.id,
+          nom: `${m.firstName || ''} ${m.lastName || ''}`,
+          email: m.email
+        });
+      });
+      
+      setMembers(activeMembers);
+      
+      // ✅ Mettre à jour la classe sélectionnée avec les bons membres
+      setSelectedClasse(prev => ({
+        ...prev,
+        membres: activeMembers,
+        membresCount: activeMembers.length
+      }));
+      
     } catch (err) {
-      console.error('Erreur chargement membres:', err);
+      console.error('❌ Erreur chargement membres:', err);
       toast.error("Impossible de charger les membres de cette classe.");
       setMembers([]);
     } finally {
@@ -64,8 +158,10 @@ const MesClasses = () => {
     if (!selectedClasse) return;
     try {
       await removeClasseMember(selectedClasse._id || selectedClasse.id, userId);
-      setMembers((prev) => prev.filter((m) => (m._id || m.id) !== userId));
+      setMembers((prev) => prev.filter((m) => (m._id || m.id || m.apprenantId?._id || m.apprenantId?.id) !== userId));
       toast.success("Apprenant retiré de la classe.");
+      // Rafraîchir les classes
+      await fetchClasses();
     } catch (err) {
       toast.error("Impossible de retirer cet apprenant.");
     }
@@ -77,9 +173,9 @@ const MesClasses = () => {
       const res = await regenerateClasseCode(selectedClasse._id || selectedClasse.id);
       const newCode = res?.code || res?.data?.code;
       if (newCode) {
-        setSelectedClasse((prev) => ({ ...prev, code: newCode }));
+        setSelectedClasse((prev) => ({ ...prev, code: newCode, codeInvitation: newCode }));
         setClasses((prev) => prev.map((c) =>
-          (c._id || c.id) === (selectedClasse._id || selectedClasse.id) ? { ...c, code: newCode } : c
+          (c._id || c.id) === (selectedClasse._id || selectedClasse.id) ? { ...c, code: newCode, codeInvitation: newCode } : c
         ));
         toast.success("Nouveau code généré. L'ancien code ne fonctionne plus.");
       }
@@ -157,7 +253,7 @@ const MesClasses = () => {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 style={{ color: '#f8fafc', fontWeight: 600, fontSize: '1.05rem' }}>{c.nom}</h3>
+                  <h3 style={{ color: '#f8fafc', fontWeight: 600, fontSize: '1.05rem' }}>{c.name || c.nom}</h3>
                   <ChevronRight size={18} color="#64748b" />
                 </div>
                 {c.description && (
@@ -170,7 +266,7 @@ const MesClasses = () => {
                   <code style={{
                     background: 'rgba(99,102,241,0.12)', padding: '4px 8px', borderRadius: 8,
                     color: '#c7d2fe', fontSize: '0.75rem',
-                  }}>{c.code}</code>
+                  }}>{c.codeInvitation || c.code}</code>
                 </div>
               </motion.div>
             ))}
@@ -212,11 +308,32 @@ const MesClasses = () => {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <h2 style={{ color: '#f8fafc', fontSize: '1.2rem', fontWeight: 700 }}>{selectedClasse.nom}</h2>
-                <button onClick={() => setSelectedClasse(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
-                  <X size={20} />
-                </button>
+                <h2 style={{ color: '#f8fafc', fontSize: '1.2rem', fontWeight: 700 }}>
+                  {selectedClasse.name || selectedClasse.nom}
+                </h2>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button 
+                    onClick={() => {
+                      if (selectedClasse) {
+                        openClasse(selectedClasse);
+                      }
+                    }}
+                    title="Rafraîchir"
+                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                  >
+                    <RefreshCw size={16} />
+                  </button>
+                  <button onClick={() => setSelectedClasse(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
+
+              {selectedClasse.description && (
+                <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: 16 }}>
+                  {selectedClasse.description}
+                </p>
+              )}
 
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
@@ -224,10 +341,12 @@ const MesClasses = () => {
               }}>
                 <div>
                   <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Code d'invitation</div>
-                  <code style={{ color: '#a5b4fc', fontSize: '1rem', fontWeight: 600 }}>{selectedClasse.code}</code>
+                  <code style={{ color: '#a5b4fc', fontSize: '1rem', fontWeight: 600 }}>
+                    {selectedClasse.codeInvitation || selectedClasse.code}
+                  </code>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => copyCode(selectedClasse.code)} title="Copier"
+                  <button onClick={() => copyCode(selectedClasse.codeInvitation || selectedClasse.code)} title="Copier"
                     style={{ padding: 8, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 8, color: '#94a3b8', cursor: 'pointer' }}>
                     <Copy size={15} />
                   </button>
@@ -241,34 +360,53 @@ const MesClasses = () => {
               <h3 style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 10 }}>
                 Apprenants ({members.length})
               </h3>
+              
               {loadingMembers ? (
                 <p style={{ color: '#64748b', fontSize: '0.85rem' }}>Chargement…</p>
               ) : members.length === 0 ? (
-                <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                  Aucun apprenant pour l'instant. Partagez le code ci-dessus.
-                </p>
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: 20, 
+                  background: 'rgba(255,255,255,0.02)', 
+                  borderRadius: 12 
+                }}>
+                  <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                    Aucun apprenant pour l'instant. Partagez le code ci-dessus.
+                  </p>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {members.map((m) => (
-                    <div key={m._id || m.id} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 10,
-                    }}>
-                      <div>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.85rem' }}>
-                          {m.firstName || m.prenom} {m.lastName || m.nom}
+                  {members.map((m, idx) => {
+                    // ✅ Extraire les données de l'apprenant avec toutes les possibilités
+                    const user = m.apprenantId || m;
+                    const userId = m._id || m.id || m.apprenantId?._id || m.apprenantId?.id || `user-${idx}`;
+                    const firstName = user.firstName || user.prenom || 'Inconnu';
+                    const lastName = user.lastName || user.nom || '';
+                    const email = user.email || '';
+                    
+                    return (
+                      <div key={userId} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 10,
+                      }}>
+                        <div>
+                          <div style={{ color: '#e2e8f0', fontSize: '0.85rem' }}>
+                            {firstName} {lastName}
+                          </div>
+                          <div style={{ color: '#64748b', fontSize: '0.72rem' }}>
+                            {email || 'Email non renseigné'}
+                          </div>
                         </div>
-                        <div style={{ color: '#64748b', fontSize: '0.72rem' }}>{m.email}</div>
+                        <button
+                          onClick={() => handleRemoveMember(userId)}
+                          title="Retirer"
+                          style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}
+                        >
+                          <UserMinus size={16} />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleRemoveMember(m._id || m.id)}
-                        title="Retirer"
-                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}
-                      >
-                        <UserMinus size={16} />
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </motion.div>
@@ -298,19 +436,35 @@ const CreateClasseModal = ({ onClose, onCreated }) => {
     }
     setSaving(true);
     try {
-      const data = await createClasse({
-        nom: nom.trim(),
+      const payload = {
+        name: nom.trim(),
         description: description.trim() || undefined,
         domainId: domainId || undefined,
         sousDomaineId: sousDomaineId || undefined,
-        niveauId: niveauId || undefined,
-      });
+        levelId: niveauId || undefined,
+        matiereId: undefined,
+      };
+
+      console.log('📤 Création de classe avec payload:', payload);
+
+      const data = await createClasse(payload);
+      
+      console.log('📦 Réponse création classe:', data);
+
       const newClasse = data?.classe || data?.data || data;
-      toast.success('Classe créée ! Partagez le code avec vos apprenants.');
-      onCreated(newClasse);
+      
+      if (newClasse?.name || newClasse?.nom) {
+        const className = newClasse.name || newClasse.nom;
+        const code = newClasse.codeInvitation || data?.codeInvitation;
+        toast.success(`Classe "${className}" créée ! Code : ${code}`);
+        onCreated(newClasse);
+      } else {
+        throw new Error('Réponse inattendue du serveur');
+      }
     } catch (err) {
-      console.error('Erreur création classe:', err);
-      toast.error("Impossible de créer la classe.");
+      console.error('❌ Erreur création classe:', err);
+      const errorMsg = err.response?.data?.error || err.message || 'Impossible de créer la classe.';
+      toast.error(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -351,7 +505,7 @@ const CreateClasseModal = ({ onClose, onCreated }) => {
         <input value={description} onChange={(e) => setDescription(e.target.value)} style={inputStyle} />
 
         <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '14px 0 6px' }}>
-          Niveau (optionnel — indicatif, n'importe quel apprenant avec le code peut rejoindre)
+          Niveau (optionnel — indicatif)
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <select value={domainId} onChange={(e) => { setDomainId(e.target.value); setSousDomaineId(''); setNiveauId(''); }} style={inputStyle}>

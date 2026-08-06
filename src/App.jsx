@@ -63,6 +63,7 @@ import ImportQuestions from "./pages/Admin/ImportQuestions";
 import CreateQuestion from "./pages/Admin/CreateQuestion";
 import QCMCleanerPage from "./pages/Admin/QCMCleanerPage";
 import QCMBankPage from "./pages/Admin/QCMBankPage";
+import AIQuizCreationPage from './pages/Admin/AIQuizCreationPage';
 
 // Pages Formateur
 import FormateurDashboard from "./pages/Formateur/FormateurDashboard";
@@ -473,7 +474,15 @@ const App = () => {
                       <StatisticsPage />
                     </PrivateRoute>
                   }
-                />
+                /><Route
+                    path="/admin/ai-quiz-creation"
+                    element={
+                      <FormateurRoute>
+                        <AIQuizCreationPage />
+                      </FormateurRoute>
+                    }
+                  />
+                
 
                 {/* Examens */}
                 {/* 🔒 Décision produit (rapport d'audit §5) : la création

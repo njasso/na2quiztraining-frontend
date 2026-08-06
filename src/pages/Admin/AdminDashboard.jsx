@@ -4,13 +4,15 @@
 //   - userGrowth : Math.random() remplacé par getWeeklyStats() réel
 //   - quizStats (camembert) : données réelles depuis l'API stats
 //   - Ajout totalQuestions depuis /api/questions count
+//   - ✅ Import Bot corrigé (depuis lucide-react, pas recharts)
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Users, BookOpen, Award, Settings,
   RefreshCw, Activity, TrendingUp, Clock, Shield,
-  AlertTriangle, Database, HelpCircle,
+  AlertTriangle, Database, HelpCircle, Bot  // ✅ Bot importé depuis lucide-react
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUsers, getQuizzes, getResults, getStats, getWeeklyStats, getQuestions } from '../../services/api';
@@ -32,37 +34,34 @@ const AdminDashboard = () => {
     totalUsers: 0, totalQuizzes: 0, totalResults: 0,
     totalQuestions: 0, activeToday: 0, newToday: 0, avgScore: 0,
   });
-  const [weeklyGrowth, setWeeklyGrowth] = useState([]);  // ✅ données réelles
-  const [quizByDomain, setQuizByDomain] = useState([]);  // ✅ données réelles
+  const [weeklyGrowth, setWeeklyGrowth] = useState([]);
+  const [quizByDomain, setQuizByDomain] = useState([]);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      // ✅ Requêtes parallèles — toutes les réponses sont { success, data, pagination? }
       const [usersRes, quizzesRes, resultsRes, statsRes, weeklyRes, questionsRes] = await Promise.allSettled([
         getUsers({ limit: 1000 }),
         getQuizzes({ limit: 1000 }),
         getResults({ limit: 1000 }),
         getStats(),
         getWeeklyStats(),
-        getQuestions({ limit: 1 }), // juste pour avoir le count total
+        getQuestions({ limit: 1 }),
       ]);
 
-      // ✅ Extraction de .data depuis chaque réponse enveloppée
-      const usersArr     = usersRes.status === 'fulfilled'
+      const usersArr = usersRes.status === 'fulfilled'
         ? (Array.isArray(usersRes.value?.data) ? usersRes.value.data : []) : [];
-      const quizzesArr   = quizzesRes.status === 'fulfilled'
+      const quizzesArr = quizzesRes.status === 'fulfilled'
         ? (Array.isArray(quizzesRes.value?.data) ? quizzesRes.value.data : []) : [];
-      const resultsArr   = resultsRes.status === 'fulfilled'
+      const resultsArr = resultsRes.status === 'fulfilled'
         ? (Array.isArray(resultsRes.value?.data) ? resultsRes.value.data : []) : [];
-      const statsData    = statsRes.status === 'fulfilled'
+      const statsData = statsRes.status === 'fulfilled'
         ? (statsRes.value?.data || statsRes.value || {}) : {};
-      const weeklyData   = weeklyRes.status === 'fulfilled'
+      const weeklyData = weeklyRes.status === 'fulfilled'
         ? (weeklyRes.value?.data || []) : [];
       const questPagination = questionsRes.status === 'fulfilled'
         ? (questionsRes.value?.pagination || {}) : {};
 
-      // Calculer les métriques
       const today = new Date().toDateString();
       const activeToday = usersArr.filter(u =>
         u.lastActive && new Date(u.lastActive).toDateString() === today
@@ -75,16 +74,15 @@ const AdminDashboard = () => {
         : (statsData.averageScore || 0);
 
       setStats({
-        totalUsers:     usersArr.length,
-        totalQuizzes:   quizzesArr.length || statsData.totalQuizzes || 0,
-        totalResults:   resultsArr.length || statsData.totalResults || 0,
+        totalUsers: usersArr.length,
+        totalQuizzes: quizzesArr.length || statsData.totalQuizzes || 0,
+        totalResults: resultsArr.length || statsData.totalResults || 0,
         totalQuestions: questPagination.total || 0,
         activeToday,
         newToday,
         avgScore,
       });
 
-      // ✅ Croissance hebdomadaire depuis l'API (plus de Math.random())
       if (Array.isArray(weeklyData) && weeklyData.length > 0) {
         setWeeklyGrowth(weeklyData.map(w => ({
           date: w.day || w.week || '',
@@ -92,7 +90,6 @@ const AdminDashboard = () => {
           score: w.average || 0,
         })));
       } else {
-        // Fallback : construire depuis les résultats (7 derniers jours)
         const last7 = [];
         for (let i = 6; i >= 0; i--) {
           const d = new Date();
@@ -113,7 +110,6 @@ const AdminDashboard = () => {
         setWeeklyGrowth(last7);
       }
 
-      // ✅ Répartition par domaine depuis les données réelles
       const domainMap = {};
       quizzesArr.forEach(q => {
         const key = q.domain || q.subject || 'Général';
@@ -162,15 +158,22 @@ const AdminDashboard = () => {
 
   // ── Actions rapides ───────────────────────────────────────
   const quickActions = [
-    { title: 'Utilisateurs',      icon: <Users size={20} />,    path: '/admin/users',     color: '#6366f1', desc: 'Gestion des comptes' },
-    { title: 'Quiz',              icon: <BookOpen size={20} />, path: '/admin/quizzes',   color: '#10b981', desc: 'Modération des quiz' },
-    { title: 'Banque questions',  icon: <Database size={20} />, path: '/admin/questions', color: '#8b5cf6', desc: 'Validation des questions' },
-    { title: 'Banque QCM',        icon: <Database size={20} />, path: '/admin/qcm-bank',  color: '#06b6d4', desc: 'Explorer & analyser la banque' },
-    { title: 'Créer une question',icon: <BookOpen size={20} />, path: '/admin/create-question', color: '#22c55e', desc: 'Création guidée (référentiel)' },
-    { title: 'Import massif',     icon: <Database size={20} />, path: '/admin/import',    color: '#f97316', desc: 'Importer CSV / JSON' },
-    { title: 'QCM Cleaner',       icon: <Settings size={20} />, path: '/admin/qcm-cleaner', color: '#eab308', desc: 'Nettoyer les chapitres' },
-    { title: 'Rapports',          icon: <TrendingUp size={20} />, path: '/admin/reports', color: '#f59e0b', desc: 'Statistiques détaillées' },
-    { title: 'Configuration',     icon: <Settings size={20} />, path: '/admin/config',    color: '#ef4444', desc: 'Paramètres système' },
+    { title: 'Utilisateurs', icon: <Users size={20} />, path: '/admin/users', color: '#6366f1', desc: 'Gestion des comptes' },
+    { title: 'Quiz', icon: <BookOpen size={20} />, path: '/admin/quizzes', color: '#10b981', desc: 'Modération des quiz' },
+    { title: 'Banque questions', icon: <Database size={20} />, path: '/admin/questions', color: '#8b5cf6', desc: 'Validation des questions' },
+    { title: 'Banque QCM', icon: <Database size={20} />, path: '/admin/qcm-bank', color: '#06b6d4', desc: 'Explorer & analyser la banque' },
+    { title: 'Créer une question', icon: <BookOpen size={20} />, path: '/admin/create-question', color: '#22c55e', desc: 'Création guidée (référentiel)' },
+    { title: 'Import massif', icon: <Database size={20} />, path: '/admin/import', color: '#f97316', desc: 'Importer CSV / JSON' },
+    { title: 'QCM Cleaner', icon: <Settings size={20} />, path: '/admin/qcm-cleaner', color: '#eab308', desc: 'Nettoyer les chapitres' },
+    { title: 'Rapports', icon: <TrendingUp size={20} />, path: '/admin/reports', color: '#f59e0b', desc: 'Statistiques détaillées' },
+    { title: 'Configuration', icon: <Settings size={20} />, path: '/admin/config', color: '#ef4444', desc: 'Paramètres système' },
+    { 
+      title: 'Quiz IA DeepSeek', 
+      icon: <Bot size={20} />, 
+      path: '/admin/ai-quiz-creation', 
+      color: '#8b5cf6', 
+      desc: 'Génération de quiz par IA' 
+    },
   ];
 
   return (
@@ -201,11 +204,11 @@ const AdminDashboard = () => {
         {/* Cartes de stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: 16, marginBottom: 28 }}>
-          <StatCard title="Utilisateurs"   value={stats.totalUsers}     icon={<Users size={22} />}    color="#6366f1" sub={stats.newToday > 0 ? `+${stats.newToday} aujourd'hui` : null} />
-          <StatCard title="Quiz créés"     value={stats.totalQuizzes}   icon={<BookOpen size={22} />} color="#10b981" />
-          <StatCard title="Tentatives"     value={stats.totalResults}   icon={<Award size={22} />}    color="#f59e0b" sub={`${stats.avgScore}% moy.`} />
-          <StatCard title="Questions"      value={stats.totalQuestions} icon={<HelpCircle size={22} />} color="#8b5cf6" />
-          <StatCard title="Actifs auj."    value={stats.activeToday}    icon={<Activity size={22} />} color="#06b6d4" />
+          <StatCard title="Utilisateurs" value={stats.totalUsers} icon={<Users size={22} />} color="#6366f1" sub={stats.newToday > 0 ? `+${stats.newToday} aujourd'hui` : null} />
+          <StatCard title="Quiz créés" value={stats.totalQuizzes} icon={<BookOpen size={22} />} color="#10b981" />
+          <StatCard title="Tentatives" value={stats.totalResults} icon={<Award size={22} />} color="#f59e0b" sub={`${stats.avgScore}% moy.`} />
+          <StatCard title="Questions" value={stats.totalQuestions} icon={<HelpCircle size={22} />} color="#8b5cf6" />
+          <StatCard title="Actifs auj." value={stats.activeToday} icon={<Activity size={22} />} color="#06b6d4" />
         </div>
 
         {/* Graphiques */}
@@ -219,11 +222,11 @@ const AdminDashboard = () => {
               <AreaChart data={weeklyGrowth}>
                 <defs>
                   <linearGradient id="rGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="sGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -306,10 +309,49 @@ const AdminDashboard = () => {
   );
 };
 
-const containerStyle = { minHeight: '100vh', background: 'linear-gradient(135deg, #05071a 0%, #0a0f2e 60%, #05071a 100%)', padding: '24px' };
-const gridBgStyle = { position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, backgroundImage: 'linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px)', backgroundSize: '40px 40px' };
-const cardStyle = { background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(12px)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 18, padding: '20px 24px' };
-const btnSecStyle = { display: 'flex', alignItems: 'center', padding: '10px 18px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 12, color: '#94a3b8', cursor: 'pointer', fontSize: '0.9rem' };
-const iconBtnStyle = { padding: 10, background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, color: '#a5b4fc', cursor: 'pointer', display: 'flex' };
+const containerStyle = { 
+  minHeight: '100vh', 
+  background: 'linear-gradient(135deg, #05071a 0%, #0a0f2e 60%, #05071a 100%)', 
+  padding: '24px' 
+};
+
+const gridBgStyle = { 
+  position: 'fixed', 
+  inset: 0, 
+  pointerEvents: 'none', 
+  zIndex: 0, 
+  backgroundImage: 'linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px)', 
+  backgroundSize: '40px 40px' 
+};
+
+const cardStyle = { 
+  background: 'rgba(15,23,42,0.7)', 
+  backdropFilter: 'blur(12px)', 
+  border: '1px solid rgba(99,102,241,0.2)', 
+  borderRadius: 18, 
+  padding: '20px 24px' 
+};
+
+const btnSecStyle = { 
+  display: 'flex', 
+  alignItems: 'center', 
+  padding: '10px 18px', 
+  background: 'rgba(255,255,255,0.05)', 
+  border: '1px solid rgba(99,102,241,0.2)', 
+  borderRadius: 12, 
+  color: '#94a3b8', 
+  cursor: 'pointer', 
+  fontSize: '0.9rem' 
+};
+
+const iconBtnStyle = { 
+  padding: 10, 
+  background: 'rgba(99,102,241,0.1)', 
+  border: '1px solid rgba(99,102,241,0.3)', 
+  borderRadius: 8, 
+  color: '#a5b4fc', 
+  cursor: 'pointer', 
+  display: 'flex' 
+};
 
 export default AdminDashboard;

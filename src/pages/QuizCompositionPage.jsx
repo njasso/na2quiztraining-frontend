@@ -28,6 +28,27 @@ import toast from "react-hot-toast";
 import { useSubscription } from "../contexts/SubscriptionContext";
 
 import NavHome from '../components/NavHome';
+
+// CORRECTION : comparaison stricte (===) remplacee par une comparaison normalisee.
+// Deux chaines visuellement identiques peuvent differer par des caracteres
+// invisibles (espace insecable U+00A0, retour chariot residuel \r d'un import
+// CSV, guillemets typographiques, casse) -- === les considere alors comme fausses
+// alors qu'elles sont la meme reponse. On normalise avant de comparer :
+//   - suppression des \r et espaces multiples
+//   - normalisation Unicode NFC (accents composes vs decomposes)
+//   - insensibilite a la casse et aux espaces de bordure
+const normalizeAnswer = (val) => {
+  if (val === null || val === undefined) return '';
+  return String(val)
+    .normalize('NFC')
+    .replace(/\r/g, '')
+    .replace(/\u00A0/g, ' ')   // espace insecable -> espace normal
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+};
+const answersMatch = (a, b) => normalizeAnswer(a) === normalizeAnswer(b) && normalizeAnswer(a) !== '';
+
 // ============================================
 // CONSTANTES
 // ============================================
@@ -238,7 +259,7 @@ const QuizCompositionPage = () => {
 
     exam.questions.forEach((q, index) => {
       const userAnswer = answers[q.id];
-      const isCorrect = userAnswer === q.correctAnswer;
+      const isCorrect = answersMatch(userAnswer, q.correctAnswer);
 
       if (isCorrect) {
         totalPoints += q.points;

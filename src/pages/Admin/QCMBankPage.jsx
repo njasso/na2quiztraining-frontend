@@ -51,7 +51,6 @@ import {
 } from 'chart.js';
 import toast from 'react-hot-toast';
 
-import NavHome from '../../components/NavHome';
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, LineElement,
   PointElement, Title, Tooltip, Legend, ArcElement, Filler
@@ -693,7 +692,6 @@ const QCMBankPage = () => {
           backdropFilter: 'blur(8px)'
         }}
       >
-      <NavHome />
         <div
           onClick={() => setExpandedQuestion(isExpanded ? null : question._id)}
           style={{ padding: '16px 20px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12 }}

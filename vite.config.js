@@ -82,6 +82,7 @@ export default defineConfig(({ mode }) => {
         "react-dom/client",
         "react-router-dom",
         "@tanstack/react-query",
+        "@tanstack/react-query-devtools",
         "framer-motion",
         "lucide-react",
         "recharts",

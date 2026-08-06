@@ -27,6 +27,27 @@ import { saveResult } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import toast from "react-hot-toast";
 
+// CORRECTION : comparaison stricte (===) remplacee par une comparaison normalisee.
+// Deux chaines visuellement identiques peuvent differer par des caracteres
+// invisibles (espace insecable U+00A0, retour chariot residuel \r d'un import
+// CSV, guillemets typographiques, casse) -- === les considere alors comme fausses
+// alors qu'elles sont la meme reponse. On normalise avant de comparer :
+//   - suppression des \r et espaces multiples
+//   - normalisation Unicode NFC (accents composes vs decomposes)
+//   - insensibilite a la casse et aux espaces de bordure
+const normalizeAnswer = (val) => {
+  if (val === null || val === undefined) return '';
+  return String(val)
+    .normalize('NFC')
+    .replace(/\r/g, '')
+    .replace(/\u00A0/g, ' ')   // espace insecable -> espace normal
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+};
+const answersMatch = (a, b) => normalizeAnswer(a) === normalizeAnswer(b) && normalizeAnswer(a) !== '';
+
+
 // ── Constantes ────────────────────────────────────────────────
 const PROGRESS_KEY = "quiz_progress";
 
@@ -119,7 +140,7 @@ const QuizPage = () => {
     const det = questions.map((q, idx) => {
       const correctAnswer = q.correctAnswer || q.answer;
       const userAnswer = userAnswers[idx];
-      const isCorrect = userAnswer === correctAnswer;
+      const isCorrect = answersMatch(userAnswer, correctAnswer);
       if (isCorrect) correctCount++;
       return {
         questionId: q._id || q.id,
