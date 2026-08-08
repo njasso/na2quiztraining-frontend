@@ -1,4 +1,4 @@
-// src/pages/SettingsPage.jsx - VERSION COMPLÈTE ET CORRIGÉE
+// src/pages/SettingsPage.jsx - VERSION COMPLÈTE AVEC TOUS LES ONGLETS + ABONNEMENT
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,7 +9,7 @@ import {
   Languages, Clock, Calendar, Trophy, Award, Users, MessageCircle, Heart,
   Share2, BookOpen, Zap, Star, HelpCircle, FileText, CreditCard, Gift,
   Settings as SettingsIcon, MapPin, Phone, Briefcase, Link, UserPlus,
-  UserMinus, Target, TrendingUp,
+  UserMinus, Target, TrendingUp, Crown, XCircle,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -73,6 +73,18 @@ const SettingsPage = () => {
     reducedMotion: false, highContrast: false, customCSS: "",
   });
 
+  // ✅ NOUVEL ÉTAT : ABONNEMENT
+  const [subscription, setSubscription] = useState({
+    plan: 'free',
+    active: false,
+    startDate: null,
+    endDate: null,
+    trialUsed: false,
+    trialEndDate: null,
+    autoRenew: false,
+    paymentMethod: null,
+  });
+
   const [userStats, setUserStats] = useState({
     quizzesTaken: 0, quizzesCreated: 0, quizzesPassed: 0, quizzesFailed: 0,
     averageScore: 0, bestScore: 0, totalPoints: 0, totalTimeSpent: 0,
@@ -131,6 +143,20 @@ const SettingsPage = () => {
         }));
       }
       if (userData.appearance) setAppearance(prev => ({ ...prev, ...userData.appearance }));
+
+      // ✅ RÉCUPÉRATION DE L'ABONNEMENT
+      if (userData.subscription) {
+        setSubscription({
+          plan: userData.subscription.plan || 'free',
+          active: userData.subscription.active || false,
+          startDate: userData.subscription.startDate || null,
+          endDate: userData.subscription.endDate || null,
+          trialUsed: userData.subscription.trialUsed || false,
+          trialEndDate: userData.subscription.trialEndDate || null,
+          autoRenew: userData.subscription.autoRenew || false,
+          paymentMethod: userData.subscription.paymentMethod || null,
+        });
+      }
 
       if (userData.stats) {
         setUserStats({
@@ -263,6 +289,7 @@ const SettingsPage = () => {
     }
   };
 
+  // ✅ Onglets avec "Abonnement"
   const tabs = [
     { id: "profile", label: "Profil", icon: <User size={18} /> },
     { id: "preferences", label: "Préférences", icon: <SettingsIcon size={18} /> },
@@ -272,8 +299,31 @@ const SettingsPage = () => {
     { id: "security", label: "Sécurité", icon: <Lock size={18} /> },
     { id: "activity", label: "Activité", icon: <Clock size={18} /> },
     { id: "stats", label: "Statistiques", icon: <Trophy size={18} /> },
+    { id: "subscription", label: "Abonnement", icon: <Crown size={18} /> },
     { id: "data", label: "Mes données", icon: <FileText size={18} /> },
   ];
+
+  // ✅ Fonctions utilitaires pour l'abonnement
+  const getPlanLabel = (plan) => {
+    const plans = {
+      free: 'Gratuit',
+      premium: 'Premium',
+      pro: 'Pro',
+      enterprise: 'Enterprise'
+    };
+    return plans[plan] || plan;
+  };
+
+  const getDaysLeft = () => {
+    if (!subscription.endDate) return 0;
+    const now = new Date();
+    const end = new Date(subscription.endDate);
+    const diff = end - now;
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const daysLeft = getDaysLeft();
+  const isActive = subscription.active && daysLeft > 0;
 
   if (loading) {
     return (
@@ -302,6 +352,7 @@ const SettingsPage = () => {
       background: "linear-gradient(135deg, #05071a 0%, #0a0f2e 60%, #05071a 100%)",
       position: "relative", padding: "24px",
     }}>
+      <NavHome />
       <div style={{
         position: "fixed", inset: 0,
         backgroundImage: "linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px)",
@@ -315,6 +366,7 @@ const SettingsPage = () => {
       }} />
 
       <main style={{ position: "relative", zIndex: 1, maxWidth: 1400, margin: "0 auto", display: "flex", gap: 24 }}>
+        {/* Sidebar */}
         <motion.aside
           initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
           style={{
@@ -378,6 +430,7 @@ const SettingsPage = () => {
           </div>
         </motion.aside>
 
+        {/* Contenu principal */}
         <motion.section
           key={activeTab} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}
@@ -395,7 +448,11 @@ const SettingsPage = () => {
               <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#f8fafc", marginBottom: 4 }}>
                 {tabs.find((t) => t.id === activeTab)?.label}
               </h1>
-              <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>Gérez vos préférences et paramètres</p>
+              <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
+                {activeTab === "subscription" 
+                  ? "Gérez votre abonnement et votre forfait" 
+                  : "Gérez vos préférences et paramètres"}
+              </p>
             </div>
             <div style={{ display: "flex", gap: 12 }}>
               <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
@@ -409,35 +466,38 @@ const SettingsPage = () => {
               >
                 <ArrowLeft size={16} /> Retour
               </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  if (activeTab === "profile") handleSaveProfile();
-                  else if (["preferences","appearance","notifications","privacy"].includes(activeTab)) handleSavePreferences();
-                }}
-                disabled={saving}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "10px 24px", background: "linear-gradient(135deg, #10b981, #059669)",
-                  border: "none", borderRadius: 12, color: "white", fontWeight: 600,
-                  cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
-                }}
-              >
-                {saving ? (
-                  <><RefreshCw size={16} className="animate-spin" /> Sauvegarde...</>
-                ) : (
-                  <><Save size={16} /> Sauvegarder</>
-                )}
-              </motion.button>
+              {activeTab !== "subscription" && activeTab !== "data" && activeTab !== "activity" && activeTab !== "stats" && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    if (activeTab === "profile") handleSaveProfile();
+                    else if (["preferences","appearance","notifications","privacy"].includes(activeTab)) handleSavePreferences();
+                  }}
+                  disabled={saving}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "10px 24px", background: "linear-gradient(135deg, #10b981, #059669)",
+                    border: "none", borderRadius: 12, color: "white", fontWeight: 600,
+                    cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
+                  }}
+                >
+                  {saving ? (
+                    <><RefreshCw size={16} className="animate-spin" /> Sauvegarde...</>
+                  ) : (
+                    <><Save size={16} /> Sauvegarder</>
+                  )}
+                </motion.button>
+              )}
             </div>
           </div>
 
           <AnimatePresence mode="wait">
 
-            {/* PROFIL */}
+            {/* ========== PROFIL ========== */}
             {activeTab === "profile" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 24 }}>
+                  {/* Avatar */}
                   <div style={{ gridColumn: "span 2", display: "flex", alignItems: "center", gap: 24 }}>
                     <div style={{ position: "relative" }}>
                       {profile.avatar ? (
@@ -611,7 +671,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* STATISTIQUES */}
+            {/* ========== STATISTIQUES ========== */}
             {activeTab === "stats" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 24 }}>
@@ -668,7 +728,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* ACTIVITÉ */}
+            {/* ========== ACTIVITÉ ========== */}
             {activeTab === "activity" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 24 }}>
@@ -712,7 +772,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* PRÉFÉRENCES */}
+            {/* ========== PRÉFÉRENCES ========== */}
             {activeTab === "preferences" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 24 }}>
@@ -778,7 +838,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* APPARENCE */}
+            {/* ========== APPARENCE ========== */}
             {activeTab === "appearance" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 24 }}>
@@ -843,7 +903,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* NOTIFICATIONS */}
+            {/* ========== NOTIFICATIONS ========== */}
             {activeTab === "notifications" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 24 }}>
@@ -890,7 +950,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* CONFIDENTIALITÉ */}
+            {/* ========== CONFIDENTIALITÉ ========== */}
             {activeTab === "privacy" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 24 }}>
@@ -960,7 +1020,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* SÉCURITÉ */}
+            {/* ========== SÉCURITÉ ========== */}
             {activeTab === "security" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -1034,7 +1094,200 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* DONNÉES */}
+            {/* ========== ABONNEMENT ========== */}
+            {activeTab === "subscription" && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                  
+                  {/* Carte du plan actuel */}
+                  <div style={{
+                    background: isActive ? 'rgba(16,185,129,0.05)' : 'rgba(99,102,241,0.05)',
+                    border: `1px solid ${isActive ? 'rgba(16,185,129,0.3)' : 'rgba(99,102,241,0.2)'}`,
+                    borderRadius: 16,
+                    padding: 24,
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '3rem', marginBottom: 8 }}>
+                      {subscription.plan === 'free' ? '🆓' : '👑'}
+                    </div>
+                    <h2 style={{ color: '#f8fafc', fontSize: '1.5rem', fontWeight: 700 }}>
+                      {getPlanLabel(subscription.plan)}
+                    </h2>
+                    <p style={{ 
+                      color: isActive ? '#10b981' : '#94a3b8',
+                      fontSize: '0.9rem',
+                      marginTop: 4
+                    }}>
+                      {isActive ? '✅ Actif' : '❌ Inactif'}
+                    </p>
+                    
+                    {isActive && (
+                      <div style={{ marginTop: 12 }}>
+                        <p style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                          {daysLeft} jour{daysLeft > 1 ? 's' : ''} restant{daysLeft > 1 ? 's' : ''}
+                        </p>
+                        {subscription.endDate && (
+                          <p style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                            Expire le {new Date(subscription.endDate).toLocaleDateString('fr-FR')}
+                          </p>
+                        )}
+                        {subscription.autoRenew && (
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 12px',
+                            background: 'rgba(16,185,129,0.1)',
+                            borderRadius: 12,
+                            color: '#10b981',
+                            fontSize: '0.7rem',
+                            marginTop: 4
+                          }}>
+                            🔄 Renouvellement automatique
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {subscription.trialUsed && !isActive && subscription.plan === 'free' && (
+                      <p style={{ color: '#f59e0b', fontSize: '0.8rem', marginTop: 8 }}>
+                        🎁 Essai gratuit déjà utilisé
+                      </p>
+                    )}
+
+                    {!subscription.trialUsed && subscription.plan === 'free' && (
+                      <p style={{ color: '#f59e0b', fontSize: '0.8rem', marginTop: 8 }}>
+                        🎁 Essai gratuit de 7 jours disponible !
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Boutons d'action */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    {subscription.plan === 'free' && !subscription.trialUsed && (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => navigate('/subscription?trial=true')}
+                        style={{
+                          padding: '14px',
+                          background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                          border: 'none',
+                          borderRadius: 12,
+                          color: 'white',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8
+                        }}
+                      >
+                        <Gift size={18} />
+                        Essayer Premium
+                      </motion.button>
+                    )}
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => navigate('/subscription')}
+                      style={{
+                        padding: '14px',
+                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                        border: 'none',
+                        borderRadius: 12,
+                        color: 'white',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8
+                      }}
+                    >
+                      <Crown size={18} />
+                      {subscription.plan === 'free' ? 'Voir les offres' : 'Gérer l\'abonnement'}
+                    </motion.button>
+
+                    {isActive && (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          if (window.confirm('Voulez-vous vraiment annuler votre abonnement ?')) {
+                            toast.success('Abonnement annulé (simulation)');
+                          }
+                        }}
+                        style={{
+                          padding: '14px',
+                          background: 'rgba(239,68,68,0.1)',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          borderRadius: 12,
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8
+                        }}
+                      >
+                        <XCircle size={18} />
+                        Annuler
+                      </motion.button>
+                    )}
+                  </div>
+
+                  {/* Détails du paiement */}
+                  {subscription.paymentMethod && (
+                    <div style={{
+                      padding: 16,
+                      background: 'rgba(255,255,255,0.02)',
+                      border: '1px solid rgba(99,102,241,0.1)',
+                      borderRadius: 12
+                    }}>
+                      <p style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: 4 }}>
+                        💳 Paiement : {subscription.paymentMethod}
+                      </p>
+                      {subscription.startDate && (
+                        <p style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                          Début : {new Date(subscription.startDate).toLocaleDateString('fr-FR')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Comparatif des plans */}
+                  <div style={{
+                    padding: 20,
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(99,102,241,0.1)',
+                    borderRadius: 12
+                  }}>
+                    <h3 style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 600, marginBottom: 12 }}>
+                      Comparatif des offres
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
+                      <div style={{ padding: 12, background: subscription.plan === 'free' ? 'rgba(99,102,241,0.1)' : 'transparent', borderRadius: 8 }}>
+                        <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Gratuit</p>
+                        <p style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 600 }}>0 XAF</p>
+                        <p style={{ color: '#64748b', fontSize: '0.6rem' }}>5 quiz/jour</p>
+                      </div>
+                      <div style={{ padding: 12, background: subscription.plan === 'premium' ? 'rgba(99,102,241,0.1)' : 'transparent', borderRadius: 8 }}>
+                        <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Premium</p>
+                        <p style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 600 }}>5 000 XAF</p>
+                        <p style={{ color: '#64748b', fontSize: '0.6rem' }}>Quiz illimités</p>
+                      </div>
+                      <div style={{ padding: 12, background: subscription.plan === 'pro' ? 'rgba(99,102,241,0.1)' : 'transparent', borderRadius: 8 }}>
+                        <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Pro</p>
+                        <p style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 600 }}>10 000 XAF</p>
+                        <p style={{ color: '#64748b', fontSize: '0.6rem' }}>+ IA illimitée</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ========== DONNÉES ========== */}
             {activeTab === "data" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -1059,6 +1312,7 @@ const SettingsPage = () => {
                 </div>
               </motion.div>
             )}
+
           </AnimatePresence>
         </motion.section>
       </main>

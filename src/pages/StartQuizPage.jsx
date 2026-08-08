@@ -19,7 +19,7 @@ import DOMAIN_DATA, {
   getAllLevels,
   getAllMatieres,
 } from "../data/domainConfig";
-import { getQuestions } from "../services/api";
+import { getQuestions, getQuizSet } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import {
   hasEducationScope,
@@ -225,12 +225,20 @@ const StartQuizPage = () => {
         matiere: formData.matiere,
       });
 
-      const response = await getQuestions({
+      // CORRECTION (audit strategique 1.1) : getQuestions() renvoyait toujours
+      // les memes questions dans le meme ordre (tri par date de creation, sans
+      // melange) — deux appels avec les memes filtres produisaient un resultat
+      // identique. getQuizSet() melange questions ET options de facon
+      // reproductible par apprenant (meme quiz revu apres rechargement, mais
+      // different d'un apprenant a l'autre), et ne renvoie PAS les bonnes
+      // reponses pour un role 'user' — la correction se fait desormais cote
+      // serveur via gradeAnswers() dans QuizPage.jsx.
+      const response = await getQuizSet({
         domaine: formData.domaine,
         sousDomaine: formData.sousDomaine,
         niveau: formData.niveau,
         matiere: formData.matiere,
-        limit: formData.questionCount,
+        count: formData.questionCount,
       });
 
       let questions = [];
@@ -242,7 +250,7 @@ const StartQuizPage = () => {
         questions = response.questions;
       }
 
-      console.log(`📦 ${questions.length} questions récupérées`);
+      console.log(`📦 ${questions.length} questions récupérées (mélangées, sans réponses)`);
 
       if (questions.length === 0) {
         toast.error(
@@ -255,12 +263,14 @@ const StartQuizPage = () => {
         return;
       }
 
-      // ✅ Normaliser les questions pour le format attendu par QuizPage
+      // ✅ Normaliser les questions — correctAnswer ne sera présent que pour
+      // un formateur/admin (includeAnswers non demandé ici) ; QuizPage.jsx
+      // ne doit JAMAIS en dépendre pour la notation d'un apprenant.
       const normalizedQuestions = questions.map((q, index) => ({
         id: q._id || q.id || index,
         text: q.question || q.text,
         options: q.options || [],
-        correctAnswer: q.correctAnswer || q.answer,
+        correctAnswer: q.correctAnswer || q.answer, // absent pour un apprenant — voir ci-dessus
         points: q.points || 1,
         explanation: q.explanation || "",
         type: q.type || "single",

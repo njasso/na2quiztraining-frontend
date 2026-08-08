@@ -2,6 +2,7 @@
 // Version complète avec tous les exports nécessaires
 
 import axios from 'axios';
+import { getDeviceFingerprint, getDeviceLabel } from '../utils/deviceFingerprint';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -129,18 +130,32 @@ const extractArray = (data, keys = ['results', 'data']) => {
 // AUTHENTIFICATION
 // ══════════════════════════════════════════════════════════════════════════════
 
-export const login = async (credentials) => {
+export const login = async (credentials, revokeDeviceId) => {
   try {
-    const { data } = await api.post('/auth/login', credentials);
+    // CORRECTION : limite de 2 appareils connectes simultanement — le
+    // serveur a besoin d'un identifiant d'appareil stable pour appliquer
+    // cette limite (voir models/Session.js cote backend). revokeDeviceId
+    // (optionnel) permet de liberer un appareil directement depuis l'ecran
+    // de connexion, sans session prealable sur CET appareil.
+    const { data } = await api.post('/auth/login', {
+      ...credentials,
+      deviceId: getDeviceFingerprint(),
+      deviceLabel: getDeviceLabel(),
+      ...(revokeDeviceId ? { revokeDeviceId } : {}),
+    });
     console.log('📦 Login response from server:', data);
     
     if (data?.success && data?.token) {
       localStorage.setItem('token', data.token);
       if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
       if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('deviceId', data.deviceId || getDeviceFingerprint());
     }
     return data;
   } catch (error) {
+    // Le blocage explicite (409 DEVICE_LIMIT_REACHED) doit remonter tel
+    // quel jusqu'à l'écran de connexion pour afficher la liste des
+    // appareils actifs — ne pas l'avaler ici.
     throw error;
   }
 };
@@ -163,12 +178,14 @@ export const register = async (userData) => {
 export const logout = async () => {
   try {
     if (localStorage.getItem('token')) {
-      await api.post('/auth/logout').catch(() => {});
+      const deviceId = localStorage.getItem('deviceId') || getDeviceFingerprint();
+      await api.post('/auth/logout', { deviceId }).catch(() => {});
     }
   } finally {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('deviceId');
     window.location.href = '/login';
   }
 };
@@ -190,7 +207,8 @@ export const refreshTokenFn = async () => {
     const stored = localStorage.getItem('refreshToken');
     if (!stored) throw new Error('No refresh token');
     
-    const { data } = await api.post('/auth/refresh', { refreshToken: stored });
+    const deviceId = localStorage.getItem('deviceId') || getDeviceFingerprint();
+    const { data } = await api.post('/auth/refresh', { refreshToken: stored, deviceId });
     
     if (!data?.success || !data?.token) {
       throw new Error('Refresh failed');
@@ -208,6 +226,9 @@ export const refreshTokenFn = async () => {
     throw error;
   }
 };
+
+export const getMyDevices = async () => (await api.get('/auth/sessions')).data;
+export const revokeDevice = async (sessionId) => (await api.delete(`/auth/sessions/${sessionId}`)).data;
 
 export const changePassword = async (oldPassword, newPassword) => {
   const { data } = await api.put('/auth/change-password', { oldPassword, newPassword });
@@ -441,6 +462,34 @@ export const getQuestions = async (params = {}) => {
   }
 };
 
+// CORRECTION (audit strategique 1.1 + 3.1/3.2) : getQuestions() renvoie
+// toujours les memes questions dans le meme ordre (tri par date de creation,
+// aucun melange), ET expose la bonne reponse en clair a l'apprenant avant
+// meme qu'il ne reponde. getQuizSet() utilise la route serveur dediee
+// (deja construite, jamais appelee jusqu'ici) qui melange questions et
+// options de facon reproductible par apprenant, et NE RENVOIE JAMAIS les
+// reponses pour un role 'user'. La correction se fait ensuite exclusivement
+// via gradeAnswers() (POST /questions/grade), jamais en local.
+export const getQuizSet = async (params = {}) => {
+  try {
+    const { data } = await api.get('/questions/quiz-set', { params });
+    return data;
+  } catch (error) {
+    console.error('Erreur getQuizSet:', error);
+    throw error.response?.data || { success: false, error: error.message };
+  }
+};
+
+export const gradeAnswers = async (answers) => {
+  try {
+    const { data } = await api.post('/questions/grade', { answers });
+    return data;
+  } catch (error) {
+    console.error('Erreur gradeAnswers:', error);
+    throw error.response?.data || { success: false, error: error.message };
+  }
+};
+
 export const getQuestionById = async (id) => {
   try {
     const { data } = await api.get(`/questions/${id}`);
@@ -624,11 +673,33 @@ export const getChapterDuplicates = async () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 export const getExams = async (params = {}) => (await api.get('/exams', { params })).data;
+
+// CORRECTION SECURITE CRITIQUE (audit) : POST /results faisait confiance au
+// score envoye par le CLIENT sans aucune verification. submitExam() utilise
+// desormais POST /exams/:id/submit, qui recalcule le score exclusivement a
+// partir des reponses stockees en base — le client ne fait plus que
+// transmettre ses reponses, jamais un score.
+export const submitExam = async (examId, payload) =>
+  (await api.post(`/exams/${examId}/submit`, payload)).data;
 export const getExamById = async (id) => (await api.get(`/exams/${id}`)).data;
 export const createExam = async (data) => (await api.post('/exams', data)).data;
 export const updateExam = async (id, data) => (await api.put(`/exams/${id}`, data)).data;
 export const deleteExam = async (id) => (await api.delete(`/exams/${id}`)).data;
 export const generateExam = async (params) => (await api.post('/exams/generate', params)).data;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SIKOLO — formations et leçons en PDF (audit stratégique 2.3)
+// ══════════════════════════════════════════════════════════════════════════════
+export const getLessons = async (params = {}) => (await api.get('/lessons', { params })).data;
+export const viewLesson = async (id) => (await api.get(`/lessons/${id}/view`)).data;
+export const downloadLesson = async (id) => (await api.get(`/lessons/${id}/download`)).data;
+export const publishLesson = async (formData) =>
+  (await api.post('/lessons', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+export const deleteLesson = async (id) => (await api.delete(`/lessons/${id}`)).data;
+
+export const createContentRequest = async (data) => (await api.post('/content-requests', data)).data;
+export const getContentRequests = async (params = {}) => (await api.get('/content-requests', { params })).data;
+export const updateContentRequestStatus = async (id, data) => (await api.patch(`/content-requests/${id}`, data)).data;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // RÉSULTATS

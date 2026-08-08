@@ -46,3 +46,39 @@ body,
   --accent-warning: #f59e0b;
   --accent-danger: #ef4444;
 }
+/* ═══════════════════════════════════════════════════════════════
+   CORRECTION (audit strategique 1.3) : menus deroulants illisibles
+   selon le navigateur. Les <select> de l'app appliquent un style sombre
+   personnalise EN LIGNE (fond semi-transparent + texte presque blanc)
+   directement sur la balise <select>. Chrome applique la meme palette a
+   la liste d'options ouverte, mais Firefox/Safari ne propagent PAS le
+   fond semi-transparent a leur rendu natif de la liste (generalement
+   fond blanc), tout en heritant quand meme la couleur de texte presque
+   blanche du parent -> texte blanc sur fond blanc, invisible sauf au
+   survol (qui ajoute un surlignage colore rendant le texte lisible par
+   contraste). Douze fichiers reproduisent ce meme motif — une seule regle
+   globale suffit a tous les corriger simultanement, plutot que de
+   retoucher chaque <select> individuellement.
+   ═══════════════════════════════════════════════════════════════ */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #1A2E44 !important;
+  color: #E0E7FF !important;
+}
+
+select option:checked,
+select option:hover,
+select option:focus {
+  background-color: #6366f1 !important;
+  color: #ffffff !important;
+}
+
+/* Firefox applique parfois un fond distinct sur l'element select lui-meme
+   quand il est ouvert ; on le force aussi pour rester coherent. */
+select:focus,
+select:active {
+  background-color: rgba(255,255,255,0.05);
+}

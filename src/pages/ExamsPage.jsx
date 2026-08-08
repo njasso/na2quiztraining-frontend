@@ -541,15 +541,23 @@ const ExamsPage = () => {
               </button>
             </div>
           ) : (
-            <ActionButton
-              icon={<Trash2 size={14} />}
-              color="#ef4444"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDeleteConfirm(examId);
-              }}
-              label="Supprimer"
-            />
+            // CORRECTION (audit strategique 1.6) : le bouton Supprimer s'affichait
+            // sans aucune condition de role — visible meme par un apprenant
+            // consultant cette page. Le serveur bloquait deja ces requetes (403),
+            // mais l'interface etait trompeuse. N'affiche desormais le bouton
+            // qu'au proprietaire de l'epreuve ou a un admin/superadmin.
+            (['admin', 'superadmin'].includes(user?.role) ||
+              String(exam.createdBy?._id || exam.createdBy) === String(user?._id || user?.id)) && (
+              <ActionButton
+                icon={<Trash2 size={14} />}
+                color="#ef4444"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteConfirm(examId);
+                }}
+                label="Supprimer"
+              />
+            )
           )}
         </div>
 

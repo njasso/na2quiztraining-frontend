@@ -23,7 +23,7 @@ import {
   User,
   Calendar,
 } from "lucide-react";
-import api from "../services/api";
+import api, { submitExam } from "../services/api";
 import toast from "react-hot-toast";
 import { useSubscription } from "../contexts/SubscriptionContext";
 
@@ -248,143 +248,75 @@ const QuizCompositionPage = () => {
   );
 
   // ============================================
-  // CALCUL DU SCORE
+  // SOUMISSION ET NOTATION — CORRECTION SECURITE CRITIQUE
   // ============================================
-  const calculateScoreAndDetails = useCallback(() => {
-    if (!exam?.questions) return { total: 0, details: [] };
-
-    let totalPoints = 0;
-    let correctCount = 0;
-    const details = [];
-
-    exam.questions.forEach((q, index) => {
-      const userAnswer = answers[q.id];
-      const isCorrect = answersMatch(userAnswer, q.correctAnswer);
-
-      if (isCorrect) {
-        totalPoints += q.points;
-        correctCount++;
-      }
-
-      details.push({
-        id: q.id,
-        index: index + 1,
-        text: q.text,
-        userAnswer: userAnswer || "(Non répondue)",
-        correctAnswer: q.correctAnswer,
-        isCorrect,
-        points: q.points,
-        explanation: q.explanation,
-      });
-    });
-
-    const percentage =
-      exam.totalPoints > 0 ? (totalPoints / exam.totalPoints) * 100 : 0;
-
-    return {
-      total: totalPoints,
-      correctCount,
-      totalQuestions: exam.questions.length,
-      totalPoints: exam.totalPoints,
-      percentage,
-      details,
-    };
-  }, [exam, answers]);
-
-  // ============================================
-  // SOUMISSION - VERSION CORRIGÉE
-  // ============================================
+  // L'ancien code calculait le score localement (calculateScoreAndDetails,
+  // comparaison answersMatch contre q.correctAnswer) PUIS postait ce score
+  // directement a POST /api/results, qui l'acceptait sans aucune verification
+  // -> un utilisateur pouvait poster n'importe quel score sans jamais
+  // repondre. De plus, q.correctAnswer n'est meme plus fourni par le
+  // serveur pour un apprenant depuis la correction de GET /exams/:id (qui
+  // retire desormais les reponses avant envoi) — la notation locale ne
+  // fonctionnerait donc plus du tout. La soumission passe desormais
+  // exclusivement par POST /exams/:id/submit, qui recalcule tout cote
+  // serveur a partir des reponses reellement stockees en base et cree le
+  // Result lui-meme (une seule requete, au lieu de noter puis sauvegarder
+  // separement).
   const handleSubmit = useCallback(async () => {
-    if (submitted) return;
+    if (submitted || !exam) return;
 
-    const result = calculateScoreAndDetails();
-
-    setDetailedResults(result.details);
-    setScore({
-      score: result.total,
-      total: result.totalPoints,
-      correctCount: result.correctCount,
-      totalQuestions: result.totalQuestions,
-      percentage: result.percentage,
-      passed: result.percentage >= (exam?.passingScore || 70),
-    });
-    setSubmitted(true);
-
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const student = studentInfo || {};
-
-    const resultData = {
-      user: user?._id || user?.id,
-      userId: user?._id || user?.id,
-      firstName: user?.firstName || student?.firstName || "Utilisateur",
-      lastName: user?.lastName || student?.lastName || "",
-      email: user?.email || "",
-      quiz: exam?.id || null,
-      quizId: exam?.id || null,
-      quizTitle: exam?.title || "Quiz",
-      domain: exam?.domain || "Général",
-      subject: exam?.subject || "Général",
-      level: exam?.level || "Débutant",
-      score: Math.round(result.percentage),
-      total: exam?.questions?.length || 0,
-      totalQuestions: exam?.questions?.length || 0,
-      correctAnswers: result.correctCount,
-      answers: answers,
-      details: result.details,
-      timeSpent: exam?.duration * 60 - timeLeft,
-      pointsEarned: result.total,
-      completed: true,
-      completedAt: new Date().toISOString(),
-    };
+    const payloadAnswers = exam.questions.map((q, index) => ({
+      questionIndex: index,
+      answer: answers[q.id] ?? null,
+    }));
+    const timeSpent = exam.duration * 60 - timeLeft;
 
     try {
-      const token =
-        localStorage.getItem("userToken") || localStorage.getItem("token");
+      const response = await submitExam(exam.id, { answers: payloadAnswers, timeSpent });
+      const data = response?.data || response;
 
-      const response = await fetch(`${BACKEND_URL}/api/results`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(resultData),
+      const details = (data.details || []).map((d) => ({
+        id: exam.questions[d.questionIndex]?.id ?? d.questionIndex,
+        index: d.questionIndex + 1,
+        text: d.question,
+        userAnswer: d.userAnswer,
+        correctAnswer: d.correctAnswer,
+        isCorrect: d.isCorrect,
+        points: d.pointsMax,
+        explanation: d.explanation,
+      }));
+
+      setDetailedResults(details);
+      setScore({
+        score: data.pointsEarned,
+        total: data.totalPoints,
+        correctCount: data.correctAnswers,
+        totalQuestions: data.totalQuestions,
+        percentage: data.score,
+        passed: data.score >= (exam?.passingScore || 70),
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        const savedResult = data?.data || data;
-        setResultId(savedResult?._id || savedResult?.id || null);
-        toast.success("Résultats sauvegardés ! Bulletin disponible.");
-      } else {
-        throw new Error(data?.message || "Erreur lors de la sauvegarde");
-      }
+      setResultId(data.resultId || null);
+      setSubmitted(true);
+      toast.success("Résultats sauvegardés ! Bulletin disponible.");
     } catch (err) {
-      console.error("Erreur sauvegarde résultat:", err);
-      toast.error("Résultats sauvegardés localement.");
-
-      const localResults = JSON.parse(
-        localStorage.getItem("quiz_results_offline") || "[]",
-      );
-      const localId = Date.now();
-      localStorage.setItem(
-        "quiz_results_offline",
-        JSON.stringify([
-          ...localResults,
-          {
-            ...resultData,
-            savedToCloud: false,
-            localId,
-            _id: `local_${localId}`,
-          },
-        ]),
-      );
-      setResultId(`local_${localId}`);
+      console.error("Erreur soumission examen:", err);
+      const status = err?.response?.status;
+      if (status === 403 && err?.response?.data?.maxAttempts) {
+        toast.error(
+          `Nombre maximal de tentatives atteint (${err.response.data.maxAttempts})`
+        );
+      } else {
+        toast.error(err?.response?.data?.message || "Erreur lors de la soumission de l'examen");
+      }
+      // Pas de repli local ici : sans notation serveur, aucun score fiable
+      // n'existe a afficher — mieux vaut laisser retenter que d'inventer
+      // un resultat errone.
+      return;
     }
 
     sessionStorage.removeItem(PROGRESS_KEY);
     sessionStorage.removeItem("quiz_answers");
-  }, [exam, answers, timeLeft, studentInfo, submitted]);
+  }, [exam, answers, timeLeft, submitted]);
 
   const handleAutoSubmit = useCallback(() => {
     console.log("⏰ Auto-submission - Temps écoulé");

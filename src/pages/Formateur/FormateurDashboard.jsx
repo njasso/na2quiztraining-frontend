@@ -6,7 +6,7 @@ import {
   BookOpen, Users, Award, TrendingUp, Settings,
   BarChart2, Clock, Download, Upload, Plus,
   Edit2, Trash2, Eye, MessageCircle, Star,
-  ChevronRight, Zap, Shield, GraduationCap
+  ChevronRight, Zap, Shield, GraduationCap, Inbox
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -18,6 +18,7 @@ import {
 import toast from 'react-hot-toast';
 
 import NavHome from '../../components/NavHome';
+import SubscriptionStatusCard from '../../components/SubscriptionStatusCard';
 const FormateurDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -180,9 +181,37 @@ const FormateurDashboard = () => {
             <p style={{ color: '#94a3b8' }}>
               Bienvenue, {user?.firstName} {user?.lastName}
             </p>
+            {/* CORRECTION (audit strategique 1.10/2.6) : certaines fonctionnalites
+                formateur (generation IA, formations SIKOLO) dependent du plan —
+                l'abonnement doit rester visible ici aussi. */}
+            <div style={{ marginTop: 12, maxWidth: 380 }}>
+              <SubscriptionStatusCard />
+            </div>
           </div>
           
           <div style={{ display: 'flex', gap: 12 }}>
+            {/* NOUVEAU (audit strategique 2.3) : acces aux demandes de lecons
+                SIKOLO envoyees par les apprenants. */}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => navigate('/formateur/demandes')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '12px 20px',
+                background: 'rgba(99,102,241,0.12)',
+                border: '1px solid rgba(99,102,241,0.3)',
+                borderRadius: 12,
+                color: '#a5b4fc',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <Inbox size={18} />
+              Demandes de contenu
+            </motion.button>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}

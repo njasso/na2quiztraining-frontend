@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import {
   initiateFacebookLogin,
-  initiateGoogleLogin
+  initiateGoogleLogin,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext'; // Import crucial
 import toast from 'react-hot-toast';
@@ -28,6 +28,10 @@ const LoginPage = () => {
   });
   const [errors,         setErrors]          = useState({});
   const [serverError,    setServerError]     = useState('');
+  // ✅ NOUVEAU : limite de 2 appareils — écran de gestion au lieu d'un
+  // simple message d'erreur sans action possible.
+  const [deviceLimitDevices, setDeviceLimitDevices] = useState(null);
+  const [revokingId, setRevokingId] = useState(null);
   const [successMessage] = useState(location.state?.message || '');
 
   // ── ✅ REDIRECTION STABLE (Remplace ton ancienne version à problème) ──
@@ -87,6 +91,8 @@ const LoginPage = () => {
         else                     localStorage.removeItem('savedEmail');
         toast.success('Connexion réussie !');
         // La redirection sera faite automatiquement par le useEffect au-dessus
+      } else if (result.deviceLimitReached) {
+        setDeviceLimitDevices(result.devices);
       } else {
         setServerError(result.error || 'Email ou mot de passe incorrect');
       }
@@ -94,6 +100,25 @@ const LoginPage = () => {
       setServerError('Une erreur est survenue lors de la connexion.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Libère un appareil puis relance la connexion, dans la même requête :
+  // aucune session valide n'existe encore sur CET appareil (c'est justement
+  // l'objet du blocage), donc la révocation passe par le login lui-même,
+  // qui vient de re-vérifier le mot de passe.
+  const handleFreeDevice = async (deviceId) => {
+    setRevokingId(deviceId);
+    try {
+      const result = await contextLogin(formData.email, formData.password, deviceId);
+      if (result.success) {
+        setDeviceLimitDevices(null);
+        toast.success('Appareil déconnecté, connexion réussie !');
+      } else {
+        toast.error(result.error || "Impossible de libérer cet appareil");
+      }
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -199,6 +224,57 @@ const LoginPage = () => {
             Accédez à votre espace NA2 Quiz
           </p>
         </div>
+
+        {/* CORRECTION : ecran de gestion des appareils quand la limite de 2 est atteinte */}
+        {deviceLimitDevices && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+            style={{
+              padding: 18, borderRadius: 14, marginBottom: 20,
+              background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+            }}
+          >
+            <p style={{ color: '#fbbf24', fontSize: '0.85rem', fontWeight: 600, margin: '0 0 4px' }}>
+              Vous êtes déjà connecté sur 2 appareils
+            </p>
+            <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 14px' }}>
+              Déconnectez-en un pour continuer sur cet appareil.
+            </p>
+            {deviceLimitDevices.map((d) => (
+              <div key={d.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 12px', marginBottom: 8, borderRadius: 10,
+                background: 'rgba(255,255,255,0.04)',
+              }}>
+                <div>
+                  <div style={{ color: '#f1f5f9', fontSize: '0.82rem' }}>{d.label}</div>
+                  <div style={{ color: '#64748b', fontSize: '0.72rem' }}>
+                    Actif {new Date(d.lastActive).toLocaleString('fr-FR')}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleFreeDevice(d.id)}
+                  disabled={revokingId === d.id}
+                  style={{
+                    padding: '6px 14px', borderRadius: 8, border: 'none',
+                    background: '#ef4444', color: '#fff', fontSize: '0.76rem', fontWeight: 600,
+                    cursor: revokingId === d.id ? 'wait' : 'pointer', opacity: revokingId === d.id ? 0.6 : 1,
+                  }}
+                >
+                  {revokingId === d.id ? '...' : 'Déconnecter'}
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setDeviceLimitDevices(null)}
+              style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.76rem', cursor: 'pointer', marginTop: 4 }}
+            >
+              Annuler
+            </button>
+          </motion.div>
+        )}
 
         {/* Messages */}
         {successMessage && (

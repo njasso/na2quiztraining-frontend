@@ -58,6 +58,13 @@ const GenerateQuizPage = () => {
   const [questionType, setQuestionType] = useState('single');
   const [numQuestions, setNumQuestions] = useState(10);
   const [keywords, setKeywords] = useState('');
+  // CORRECTION (audit strategique 1.8) : aucune capacite d'edition des
+  // questions generees par IA avant enregistrement — l'utilisateur devait
+  // accepter tel quel. Ajout d'un mode edition par carte de question.
+  const [editingQIndex, setEditingQIndex] = useState(null);
+  // CORRECTION (audit strategique 1.5) : filtre/etiquette chapitre generalise
+  // a cette page — sert d'indice facultatif pour l'IA (aucune validation ne bloque).
+  const [libChapitre, setLibChapitre] = useState('');
   
   // État de l'application
   const [generatedQuiz, setGeneratedQuiz] = useState(null);
@@ -165,7 +172,8 @@ const GenerateQuizPage = () => {
         matiereId: selectedMatiere,
         numQuestions: numQuestions,
         type: questionType === 'multiple' ? 'multiple' : 'qcm',
-        keywords: keywords || undefined
+        keywords: keywords || undefined,
+        libChapitre: libChapitre || undefined,
       };
 
       console.log('🚀 Envoi au backend:', requestData);
@@ -469,6 +477,20 @@ const GenerateQuizPage = () => {
           />
         </div>
 
+        <div style={{ marginBottom: 24 }}>
+          <label style={styles.label}>
+            <Tag size={14} style={{ marginRight: 4 }} />
+            Chapitre (facultatif)
+          </label>
+          <input
+            type="text"
+            value={libChapitre}
+            onChange={(e) => setLibChapitre(e.target.value)}
+            placeholder="Ex: Fonctions numériques — guide l'IA sans être obligatoire"
+            style={styles.input}
+          />
+        </div>
+
         {isLoading && (
           <div style={{ marginBottom: 20 }}>
             <div style={styles.progressHeader}>
@@ -562,66 +584,135 @@ const GenerateQuizPage = () => {
         </div>
 
         <div style={styles.questionList}>
-          {generatedQuiz?.questions?.map((q, index) => (
-            <motion.div
-              key={q.id || index}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-              style={styles.questionCard}
-            >
-              <div style={styles.questionHeader}>
-                <span style={styles.questionNumber}>{index + 1}</span>
-                <p style={styles.questionText}>{q.text}</p>
-                <span style={{
-                  ...styles.difficultyBadge,
-                  background: 'rgba(245,158,11,0.1)',
-                  borderColor: '#f59e0b',
-                  color: '#f59e0b',
-                }}>
-                  {q.points} pt{q.points > 1 ? 's' : ''}
-                </span>
-              </div>
+          {generatedQuiz?.questions?.map((q, index) => {
+            const isEditing = editingQIndex === index;
 
-              <div style={styles.optionsGrid}>
-                {q.options?.map((opt, optIndex) => {
-                  const isCorrect = opt === q.correctAnswer;
-                  return (
-                    <div
-                      key={optIndex}
-                      style={{
-                        ...styles.option,
-                        background: isCorrect ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.02)',
-                        borderColor: isCorrect ? '#10b981' : 'rgba(99,102,241,0.2)',
-                      }}
-                    >
-      <NavHome />
-                      <span style={{
-                        ...styles.optionLetter,
-                        color: isCorrect ? '#10b981' : '#64748b',
-                      }}>
-                        {String.fromCharCode(65 + optIndex)}.
-                      </span>
-                      <span style={{
-                        ...styles.optionText,
-                        color: isCorrect ? '#10b981' : '#94a3b8',
-                      }}>
-                        {opt}
-                      </span>
-                      {isCorrect && <CheckCircle size={14} color="#10b981" />}
-                    </div>
-                  );
-                })}
-              </div>
+            const updateQuestion = (patch) => {
+              setGeneratedQuiz(prev => ({
+                ...prev,
+                questions: prev.questions.map((qq, i) => i === index ? { ...qq, ...patch } : qq),
+              }));
+            };
 
-              {q.explanation && (
-                <div style={styles.explanation}>
-                  <span style={{ color: '#94a3b8' }}>💡 </span>
-                  {q.explanation}
+            return (
+              <motion.div
+                key={q.id || index}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                style={{ ...styles.questionCard, border: isEditing ? '1px solid #6366f1' : styles.questionCard.border }}
+              >
+                <div style={styles.questionHeader}>
+                  <span style={styles.questionNumber}>{index + 1}</span>
+                  {isEditing ? (
+                    <textarea
+                      value={q.text}
+                      onChange={(e) => updateQuestion({ text: e.target.value })}
+                      rows={2}
+                      style={{ ...styles.questionText, width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: 8, resize: 'vertical' }}
+                    />
+                  ) : (
+                    <p style={styles.questionText}>{q.text}</p>
+                  )}
+                  <span style={{
+                    ...styles.difficultyBadge,
+                    background: 'rgba(245,158,11,0.1)',
+                    borderColor: '#f59e0b',
+                    color: '#f59e0b',
+                  }}>
+                    {q.points} pt{q.points > 1 ? 's' : ''}
+                  </span>
+                  {/* CORRECTION (audit strategique 1.8) : edition avant validation */}
+                  <button
+                    type="button"
+                    onClick={() => setEditingQIndex(isEditing ? null : index)}
+                    style={{
+                      marginLeft: 8, padding: '6px 12px', borderRadius: 8, fontSize: '0.76rem', fontWeight: 600,
+                      background: isEditing ? '#10b981' : 'rgba(99,102,241,0.15)',
+                      color: isEditing ? '#fff' : '#a5b4fc', border: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    {isEditing ? 'Terminer' : 'Modifier'}
+                  </button>
                 </div>
-              )}
-            </motion.div>
-          ))}
+
+                <div style={styles.optionsGrid}>
+                  {q.options?.map((opt, optIndex) => {
+                    const isCorrect = opt === q.correctAnswer;
+                    return (
+                      <div
+                        key={optIndex}
+                        style={{
+                          ...styles.option,
+                          background: isCorrect ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.02)',
+                          borderColor: isCorrect ? '#10b981' : 'rgba(99,102,241,0.2)',
+                        }}
+                      >
+                        <span style={{
+                          ...styles.optionLetter,
+                          color: isCorrect ? '#10b981' : '#64748b',
+                        }}>
+                          {String.fromCharCode(65 + optIndex)}.
+                        </span>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={opt}
+                            onChange={(e) => {
+                              const wasCorrect = opt === q.correctAnswer;
+                              const newOptions = q.options.map((o, i) => i === optIndex ? e.target.value : o);
+                              updateQuestion({
+                                options: newOptions,
+                                correctAnswer: wasCorrect ? e.target.value : q.correctAnswer,
+                              });
+                            }}
+                            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '0.85rem' }}
+                          />
+                        ) : (
+                          <span style={{
+                            ...styles.optionText,
+                            color: isCorrect ? '#10b981' : '#94a3b8',
+                          }}>
+                            {opt}
+                          </span>
+                        )}
+                        {isEditing ? (
+                          <button
+                            type="button"
+                            title="Marquer comme bonne réponse"
+                            onClick={() => updateQuestion({ correctAnswer: opt })}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: isCorrect ? '#10b981' : '#475569',
+                            }}
+                          >
+                            <CheckCircle size={16} />
+                          </button>
+                        ) : (
+                          isCorrect && <CheckCircle size={14} color="#10b981" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {isEditing ? (
+                  <textarea
+                    value={q.explanation || ''}
+                    onChange={(e) => updateQuestion({ explanation: e.target.value })}
+                    placeholder="Explication (facultatif)"
+                    rows={2}
+                    style={{ width: '100%', marginTop: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8, padding: 8, color: '#cbd5e1', fontSize: '0.8rem', resize: 'vertical' }}
+                  />
+                ) : q.explanation && (
+                  <div style={styles.explanation}>
+                    <span style={{ color: '#94a3b8' }}>💡 </span>
+                    {q.explanation}
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
         </div>
 
         <div style={styles.actionButtons}>

@@ -123,7 +123,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // ── Login ──────────────────────────────────────────────────
-  const login = async (email, password) => {
+  const login = async (email, password, revokeDeviceId) => {
     if (!isOnline) {
       toast.error('Pas de connexion internet');
       return { success: false, error: 'Hors-ligne' };
@@ -131,7 +131,7 @@ export const AuthProvider = ({ children }) => {
 
     try {
       console.log('🔐 Tentative de connexion...');
-      const response = await apiLogin({ email, password });
+      const response = await apiLogin({ email, password }, revokeDeviceId);
       console.log('📦 Réponse login:', response);
 
       if (response?.success && response.token && response.user) {
@@ -146,6 +146,19 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: errorMsg };
     } catch (err) {
       console.error('❌ Erreur login:', err);
+
+      // ✅ NOUVEAU : blocage explicite du 3e appareil — remonte la liste des
+      // appareils actifs pour que l'écran de connexion propose d'en libérer un,
+      // plutôt qu'un simple message d'erreur sans action possible.
+      if (err?.response?.status === 409 && err?.response?.data?.code === 'DEVICE_LIMIT_REACHED') {
+        return {
+          success: false,
+          deviceLimitReached: true,
+          devices: err.response.data.devices || [],
+          error: err.response.data.error,
+        };
+      }
+
       let msg = 'Erreur de connexion au serveur';
       if (err?.response?.status === 401) msg = 'Email ou mot de passe incorrect';
       else if (err?.response?.status === 429) msg = err?.response?.data?.error || 'Trop de tentatives';

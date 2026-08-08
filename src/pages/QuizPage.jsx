@@ -23,7 +23,7 @@ import {
   User,
   Calendar,
 } from "lucide-react";
-import { saveResult } from "../services/api";
+import { saveResult, gradeAnswers } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import toast from "react-hot-toast";
 
@@ -135,24 +135,42 @@ const QuizPage = () => {
   }, [score, questions.length]); // eslint-disable-line
 
   // ── Calcul score ────────────────────────────────────────────
-  const calculateScore = useCallback(() => {
-    let correctCount = 0;
-    const det = questions.map((q, idx) => {
-      const correctAnswer = q.correctAnswer || q.answer;
-      const userAnswer = userAnswers[idx];
-      const isCorrect = answersMatch(userAnswer, correctAnswer);
-      if (isCorrect) correctCount++;
+  // CORRECTION (audit strategique 1.1/3.1/3.2) : la notation se faisait ici
+  // par comparaison locale (answersMatch) contre q.correctAnswer — un champ
+  // qui n'existe tout simplement plus dans la reponse pour un apprenant
+  // depuis la migration de StartQuizPage.jsx vers getQuizSet() (qui ne
+  // renvoie jamais les reponses a ce role). La notation passe desormais
+  // exclusivement par POST /questions/grade : le client envoie ses reponses
+  // SANS jamais connaitre la solution, le serveur compare et renvoie le
+  // score. C'est aussi ce qui empeche techniquement toute lecture des
+  // bonnes reponses via les outils de developpement du navigateur avant
+  // la soumission.
+  const gradeViaServer = useCallback(async () => {
+    const answers = questions.map((q, idx) => ({
+      questionId: q._id || q.id,
+      answer: userAnswers[idx] ?? null,
+    })).filter((a) => a.questionId);
+
+    if (answers.length === 0) {
+      return { correctCount: 0, details: [], pointsEarned: 0 };
+    }
+
+    try {
+      const res = await gradeAnswers(answers);
+      const data = res?.data || res;
       return {
-        questionId: q._id || q.id,
-        question: q.text || q.question,
-        userAnswer,
-        correctAnswer,
-        isCorrect,
-        points: isCorrect ? q.points || 1 : 0,
-        explanation: q.explanation || "",
+        correctCount: data.correctAnswers ?? 0,
+        details: data.details ?? [],
+        pointsEarned: data.pointsEarned ?? 0,
+        serverScore: data.score,
       };
-    });
-    return { correctCount, details: det };
+    } catch (err) {
+      console.error("Erreur notation serveur:", err);
+      // Repli degrade : impossible de noter sans connexion — on l'indique
+      // clairement plutot que d'inventer un score cote client.
+      toast.error("Impossible de noter le quiz — vérifiez votre connexion");
+      return { correctCount: 0, details: [], pointsEarned: 0, gradingFailed: true };
+    }
   }, [questions, userAnswers]);
 
   // ── Télécharger le bulletin ──────────────────────────────────
@@ -191,13 +209,18 @@ const QuizPage = () => {
     if (isSubmitting || score !== null) return;
     setIsSubmitting(true);
 
-    const { correctCount, details: det } = calculateScore();
-    const scorePercent =
-      questions.length > 0
-        ? Math.round((correctCount / questions.length) * 100)
-        : 0;
+    // ✅ Notation cote serveur (voir gradeViaServer) — jamais de calcul local.
+    const { correctCount, details: det, pointsEarned: serverPoints, serverScore, gradingFailed } = await gradeViaServer();
+    const scorePercent = serverScore ?? (
+      questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0
+    );
     const timeSpent = duration - timeLeft;
-    const pointsEarned = det.reduce((s, d) => s + d.points, 0);
+    const pointsEarned = serverPoints ?? det.reduce((s, d) => s + (d.points || 0), 0);
+
+    if (gradingFailed) {
+      setIsSubmitting(false);
+      return; // laisse l'apprenant reessayer plutot que d'enregistrer un score a 0 errone
+    }
 
     const studentName =
       `${userInfo?.firstName || user?.firstName || ""} ${userInfo?.lastName || user?.lastName || ""}`.trim() ||

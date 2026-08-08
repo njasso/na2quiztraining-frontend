@@ -27,7 +27,29 @@ import {
   getAllMatieres,
   getSousDomaineNom,
   getLevelNom,
+  getAllDomaines,
 } from '../data/domainConfig';
+
+// ═══════════════════════════════════════════════════════════════
+// DÉCOUVERTE (audit stratégique 2.2) : un élève de 3e curieux d'économie,
+// un Terminale qui veut apprendre du management — le programme scolaire
+// strict (domaine 1, verrouillé par sous-domaine+niveau) ne le permet pas,
+// à raison : on ne mélange pas la logique de scope pédagogique avec de la
+// découverte hors-cursus. Les domaines 2 (Professionnel) et 3 (Spiritualité
+// et Culture Camerounaise) sont par nature transversaux — aucun programme
+// officiel de classe n'en dépend, donc aucun risque à les rendre visibles
+// à TOUS les utilisateurs authentifiés, quel que soit leur niveau verrouillé.
+// Recommandation appliquée : un onglet "Découverte" séparé plutôt qu'un
+// mélange avec le fil du programme officiel (voir DecouvertePage.jsx).
+export const DISCOVERY_DOMAIN_IDS = ['2', '3'];
+
+/** Un domaine est-il en accès libre (hors verrouillage de scope) ? */
+export const isDiscoveryDomain = (domainId) =>
+  DISCOVERY_DOMAIN_IDS.includes(String(domainId));
+
+/** Les domaines proposés dans l'onglet Découverte, en accès libre pour tous. */
+export const getDiscoveryDomains = () =>
+  getAllDomaines().filter((d) => isDiscoveryDomain(d.id));
 
 /** Un utilisateur a-t-il déjà choisi son niveau d'étude ? */
 export function hasEducationScope(user) {
@@ -114,10 +136,16 @@ export function formatScopeLabel(user) {
 export function isContentInScope(user, content) {
   if (!content) return false;
   if (isScopeExemptRole(user)) return true;
+
+  // ✅ Le contenu Découverte (domaines 2/3) est visible par tous, y compris
+  // un utilisateur dont le scope est verrouillé sur le domaine 1 — c'est
+  // tout le principe de la découverte hors-cursus (voir DISCOVERY_DOMAIN_IDS).
+  const contentDomain = content.domainId ?? content.domain;
+  if (isDiscoveryDomain(contentDomain)) return true;
+
   if (!hasEducationScope(user)) return false;
 
   const { domainId, sousDomaineId, levelId } = user.education;
-  const contentDomain = content.domainId ?? content.domain;
   const contentSousDomaine = content.sousDomaineId ?? content.sousDomaine;
   const contentLevel = content.levelId ?? content.level;
 

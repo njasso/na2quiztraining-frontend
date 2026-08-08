@@ -65,6 +65,10 @@ const ManualQuizCreation = () => {
     correctAnswers: [],
     points: 1,
     explanation: '',
+    // CORRECTION (audit strategique 1.5) : le filtre/etiquette chapitre
+    // existait deja dans 5 pages de creation mais pas ici. Reste facultatif —
+    // aucune validation ne bloque l'ajout d'une question sans chapitre.
+    libChapitre: '',
   });
   const [editingIndex, setEditingIndex] = useState(-1);
   const [showPreview, setShowPreview] = useState(false);
@@ -704,6 +708,28 @@ const ManualQuizCreation = () => {
               color: '#f8fafc',
               outline: 'none',
               resize: 'vertical',
+            }}
+          />
+        </div>
+
+        {/* Chapitre — CORRECTION (audit strategique 1.5) : facultatif */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: 6 }}>
+            Chapitre <span style={{ opacity: 0.6 }}>(facultatif)</span>
+          </label>
+          <input
+            type="text"
+            value={currentQuestion.libChapitre}
+            onChange={(e) => handleQuestionChange('libChapitre', e.target.value)}
+            placeholder="ex. Fonctions numériques"
+            style={{
+              width: '100%',
+              padding: 12,
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(99,102,241,0.2)',
+              borderRadius: 10,
+              color: '#f8fafc',
+              outline: 'none',
             }}
           />
         </div>
